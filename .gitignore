@@ -1,0 +1,16 @@
+/target
+**/*.rs.bk
+Cargo.lock
+
+# Kotlin sidecar
+sidecar/gradle-agent/.gradle/
+sidecar/gradle-agent/build/
+sidecar/gradle-agent/.idea/
+sidecar/gradle-agent/gradle/
+sidecar/gradle-agent/gradlew
+sidecar/gradle-agent/gradlew.bat
+
+# Editor
+.vscode/
+.idea/
+*.swp
