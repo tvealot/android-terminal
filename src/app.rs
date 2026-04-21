@@ -13,6 +13,14 @@ pub struct App {
     pub should_quit: bool,
     pub logcat: crate::logcat::LogcatState,
     pub gradle: crate::gradle::GradleState,
+    pub monitor: crate::monitor::MonitorState,
+    pub input_mode: InputMode,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InputMode {
+    Normal,
+    LogcatFilter,
 }
 
 pub struct StatusFlash {
@@ -43,6 +51,8 @@ impl App {
             should_quit: false,
             logcat: crate::logcat::LogcatState::default(),
             gradle: crate::gradle::GradleState::default(),
+            monitor: crate::monitor::MonitorState::default(),
+            input_mode: InputMode::Normal,
         }
     }
 

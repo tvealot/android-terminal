@@ -2,10 +2,12 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 
 use crate::gradle::GradleEvent;
 use crate::logcat::LogLine;
+use crate::monitor::MonitorSample;
 
 pub enum Event {
     Logcat(LogLine),
     Gradle(GradleEvent),
+    Monitor(MonitorSample),
     Status { text: String, error: bool },
 }
 

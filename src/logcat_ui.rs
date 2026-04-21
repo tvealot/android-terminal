@@ -10,9 +10,16 @@ use crate::theme::Theme;
 
 pub fn render(f: &mut Frame, area: Rect, app: &App, theme: &Theme, focused: bool) {
     let border_color = if focused { theme.accent } else { theme.surface };
+    let filter_hint = if app.input_mode == crate::app::InputMode::LogcatFilter {
+        format!(" logcat — filter: {}_ ", app.logcat.filter)
+    } else if !app.logcat.filter.is_empty() {
+        format!(" logcat — filter: {} ", app.logcat.filter)
+    } else {
+        " logcat ".to_string()
+    };
     let block = Block::default()
         .title(Span::styled(
-            " logcat ",
+            filter_hint,
             Style::default().fg(theme.fg).add_modifier(Modifier::BOLD),
         ))
         .borders(Borders::ALL)

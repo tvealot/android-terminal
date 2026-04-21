@@ -6,6 +6,8 @@ mod gradle;
 mod gradle_ui;
 mod logcat;
 mod logcat_ui;
+mod monitor;
+mod monitor_ui;
 mod panel;
 mod theme;
 mod ui;
@@ -25,7 +27,7 @@ use crossterm::terminal::{
 use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
 
-use crate::app::App;
+use crate::app::{App, InputMode};
 use crate::dispatch::{DispatchContext, Event};
 use crate::panel::{by_focus_key, by_toggle_key, PanelId};
 
@@ -41,9 +43,10 @@ fn main() -> Result<()> {
 
     if adb::is_available() {
         let _ = adb::logcat::spawn(dispatcher.tx.clone());
+        monitor::spawn_poller(dispatcher.tx.clone());
     } else {
         let _ = dispatcher.tx.send(Event::Status {
-            text: "adb not found in PATH — logcat disabled".to_string(),
+            text: "adb not found in PATH — logcat/monitor disabled".to_string(),
             error: true,
         });
     }
@@ -84,6 +87,7 @@ fn run_loop(
             match ev {
                 Event::Logcat(line) => app.logcat.push(line),
                 Event::Gradle(ev) => app.gradle.apply(ev),
+                Event::Monitor(sample) => app.monitor.push(sample),
                 Event::Status { text, error } => app.flash(text, error),
             }
         }
@@ -107,6 +111,11 @@ fn run_loop(
 }
 
 fn handle_key(app: &mut App, key: KeyEvent, dispatcher: &DispatchContext) {
+    if app.input_mode == InputMode::LogcatFilter {
+        handle_filter_key(app, key);
+        return;
+    }
+
     if key.modifiers.contains(KeyModifiers::ALT) {
         if let KeyCode::Char(c) = key.code {
             if let Some(id) = by_toggle_key(c) {
@@ -129,10 +138,28 @@ fn handle_key(app: &mut App, key: KeyEvent, dispatcher: &DispatchContext) {
         KeyCode::Char('r') => {
             start_gradle(app, dispatcher);
         }
+        KeyCode::Char('/') if app.focus == PanelId::Logcat => {
+            app.input_mode = InputMode::LogcatFilter;
+        }
         KeyCode::Char(c) => {
             if let Some(id) = by_focus_key(c) {
                 app.focus_panel(id);
             }
+        }
+        _ => {}
+    }
+}
+
+fn handle_filter_key(app: &mut App, key: KeyEvent) {
+    match key.code {
+        KeyCode::Enter | KeyCode::Esc => {
+            app.input_mode = InputMode::Normal;
+        }
+        KeyCode::Backspace => {
+            app.logcat.filter.pop();
+        }
+        KeyCode::Char(c) => {
+            app.logcat.filter.push(c);
         }
         _ => {}
     }

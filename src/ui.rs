@@ -7,7 +7,7 @@ use ratatui::Frame;
 use crate::app::App;
 use crate::panel::{def, PanelId, PANELS};
 use crate::theme::Theme;
-use crate::{gradle_ui, logcat_ui};
+use crate::{gradle_ui, logcat_ui, monitor_ui};
 
 pub fn render(f: &mut Frame, app: &App, theme: &Theme) {
     let area = f.area();
@@ -93,6 +93,7 @@ fn render_panel(
     match id {
         PanelId::Logcat => logcat_ui::render(f, area, app, theme, focused),
         PanelId::Gradle => gradle_ui::render(f, area, app, theme, focused),
+        PanelId::Monitor => monitor_ui::render(f, area, app, theme, focused),
         other => render_stub(f, area, other, theme, focused),
     }
 }
@@ -117,13 +118,24 @@ fn render_stub(f: &mut Frame, area: Rect, id: PanelId, theme: &Theme, focused: b
 }
 
 fn render_footer(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
-    let text = if let Some(flash) = &app.status {
+    let text = if app.input_mode == crate::app::InputMode::LogcatFilter {
+        Line::from(vec![
+            Span::styled(
+                "filter: ",
+                Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(app.logcat.filter.clone(), Style::default().fg(theme.fg)),
+            Span::styled("_  ", Style::default().fg(theme.warn)),
+            Span::styled("Enter/Esc: exit", Style::default().fg(theme.muted)),
+        ])
+    } else if let Some(flash) = &app.status {
         let style = Style::default().fg(if flash.error { theme.error } else { theme.accent });
         Line::from(Span::styled(flash.text.clone(), style))
     } else {
         Line::from(vec![
-            Span::styled("Alt+1..9 toggle  ", Style::default().fg(theme.muted)),
+            Span::styled("Alt+1..5 toggle  ", Style::default().fg(theme.muted)),
             Span::styled("letter: focus  ", Style::default().fg(theme.muted)),
+            Span::styled("/: filter logcat  ", Style::default().fg(theme.muted)),
             Span::styled("r: run gradle  ", Style::default().fg(theme.muted)),
             Span::styled("?: help  ", Style::default().fg(theme.muted)),
             Span::styled("q: quit", Style::default().fg(theme.muted)),
@@ -166,6 +178,12 @@ fn render_help(f: &mut Frame, area: Rect, theme: &Theme) {
             Span::raw(format!("  focus {}", p.name)),
         ]));
     }
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        "Logcat",
+        Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+    )));
+    lines.push(Line::from("  /  enter filter mode (tag/message substring)"));
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
         "Gradle",
