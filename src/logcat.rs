@@ -10,7 +10,7 @@ pub struct LogLine {
     pub message: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum LogLevel {
     Verbose,
     Debug,
@@ -30,6 +30,28 @@ impl LogLevel {
             'E' => Self::Error,
             'F' => Self::Fatal,
             _ => Self::Info,
+        }
+    }
+
+    pub fn short(self) -> &'static str {
+        match self {
+            Self::Verbose => "V",
+            Self::Debug => "D",
+            Self::Info => "I",
+            Self::Warn => "W",
+            Self::Error => "E",
+            Self::Fatal => "F",
+        }
+    }
+
+    pub fn next_cycle(self) -> Self {
+        match self {
+            Self::Verbose => Self::Debug,
+            Self::Debug => Self::Info,
+            Self::Info => Self::Warn,
+            Self::Warn => Self::Error,
+            Self::Error => Self::Verbose,
+            Self::Fatal => Self::Verbose,
         }
     }
 }
@@ -58,10 +80,20 @@ impl LogLine {
     }
 }
 
-#[derive(Default)]
 pub struct LogcatState {
     pub lines: VecDeque<LogLine>,
     pub filter: String,
+    pub min_level: LogLevel,
+}
+
+impl Default for LogcatState {
+    fn default() -> Self {
+        Self {
+            lines: VecDeque::new(),
+            filter: String::new(),
+            min_level: LogLevel::Verbose,
+        }
+    }
 }
 
 impl LogcatState {
@@ -73,13 +105,15 @@ impl LogcatState {
     }
 
     pub fn visible<'a>(&'a self) -> Box<dyn Iterator<Item = &'a LogLine> + 'a> {
+        let min = self.min_level;
         if self.filter.is_empty() {
-            Box::new(self.lines.iter())
+            Box::new(self.lines.iter().filter(move |l| l.level >= min))
         } else {
             let needle = self.filter.to_lowercase();
             Box::new(self.lines.iter().filter(move |l| {
-                l.tag.to_lowercase().contains(&needle)
-                    || l.message.to_lowercase().contains(&needle)
+                l.level >= min
+                    && (l.tag.to_lowercase().contains(&needle)
+                        || l.message.to_lowercase().contains(&needle))
             }))
         }
     }

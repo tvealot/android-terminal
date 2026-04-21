@@ -3,11 +3,13 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 use crate::gradle::GradleEvent;
 use crate::logcat::LogLine;
 use crate::monitor::MonitorSample;
+use crate::processes::ProcessInfo;
 
 pub enum Event {
     Logcat(LogLine),
     Gradle(GradleEvent),
     Monitor(MonitorSample),
+    Processes(Vec<ProcessInfo>),
     Status { text: String, error: bool },
 }
 

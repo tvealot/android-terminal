@@ -10,12 +10,18 @@ use crate::theme::Theme;
 
 pub fn render(f: &mut Frame, area: Rect, app: &App, theme: &Theme, focused: bool) {
     let border_color = if focused { theme.accent } else { theme.surface };
-    let filter_hint = if app.input_mode == crate::app::InputMode::LogcatFilter {
-        format!(" logcat — filter: {}_ ", app.logcat.filter)
-    } else if !app.logcat.filter.is_empty() {
-        format!(" logcat — filter: {} ", app.logcat.filter)
+    let level = app.logcat.min_level;
+    let level_part = if level == crate::logcat::LogLevel::Verbose {
+        String::new()
     } else {
-        " logcat ".to_string()
+        format!(" [{}+]", level.short())
+    };
+    let filter_hint = if app.input_mode == crate::app::InputMode::LogcatFilter {
+        format!(" logcat{} — filter: {}_ ", level_part, app.logcat.filter)
+    } else if !app.logcat.filter.is_empty() {
+        format!(" logcat{} — filter: {} ", level_part, app.logcat.filter)
+    } else {
+        format!(" logcat{} ", level_part)
     };
     let block = Block::default()
         .title(Span::styled(

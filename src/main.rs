@@ -9,6 +9,8 @@ mod logcat_ui;
 mod monitor;
 mod monitor_ui;
 mod panel;
+mod processes;
+mod processes_ui;
 mod theme;
 mod ui;
 
@@ -44,6 +46,7 @@ fn main() -> Result<()> {
     if adb::is_available() {
         let _ = adb::logcat::spawn(dispatcher.tx.clone());
         monitor::spawn_poller(dispatcher.tx.clone());
+        processes::spawn_poller(dispatcher.tx.clone());
     } else {
         let _ = dispatcher.tx.send(Event::Status {
             text: "adb not found in PATH — logcat/monitor disabled".to_string(),
@@ -88,6 +91,7 @@ fn run_loop(
                 Event::Logcat(line) => app.logcat.push(line),
                 Event::Gradle(ev) => app.gradle.apply(ev),
                 Event::Monitor(sample) => app.monitor.push(sample),
+                Event::Processes(procs) => app.processes.replace(procs),
                 Event::Status { text, error } => app.flash(text, error),
             }
         }
@@ -140,6 +144,22 @@ fn handle_key(app: &mut App, key: KeyEvent, dispatcher: &DispatchContext) {
         }
         KeyCode::Char('/') if app.focus == PanelId::Logcat => {
             app.input_mode = InputMode::LogcatFilter;
+        }
+        KeyCode::Char('L') if app.focus == PanelId::Logcat => {
+            app.logcat.min_level = app.logcat.min_level.next_cycle();
+            app.flash(
+                format!("logcat level: {}+", app.logcat.min_level.short()),
+                false,
+            );
+        }
+        KeyCode::Char('j') | KeyCode::Down if app.focus == PanelId::Processes => {
+            if !app.processes.processes.is_empty() {
+                app.processes.selected =
+                    (app.processes.selected + 1).min(app.processes.processes.len() - 1);
+            }
+        }
+        KeyCode::Char('k') | KeyCode::Up if app.focus == PanelId::Processes => {
+            app.processes.selected = app.processes.selected.saturating_sub(1);
         }
         KeyCode::Char(c) => {
             if let Some(id) = by_focus_key(c) {

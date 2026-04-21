@@ -14,6 +14,7 @@ pub struct App {
     pub logcat: crate::logcat::LogcatState,
     pub gradle: crate::gradle::GradleState,
     pub monitor: crate::monitor::MonitorState,
+    pub processes: crate::processes::ProcessesState,
     pub input_mode: InputMode,
 }
 
@@ -52,6 +53,7 @@ impl App {
             logcat: crate::logcat::LogcatState::default(),
             gradle: crate::gradle::GradleState::default(),
             monitor: crate::monitor::MonitorState::default(),
+            processes: crate::processes::ProcessesState::default(),
             input_mode: InputMode::Normal,
         }
     }

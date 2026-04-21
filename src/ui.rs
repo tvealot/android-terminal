@@ -7,7 +7,7 @@ use ratatui::Frame;
 use crate::app::App;
 use crate::panel::{def, PanelId, PANELS};
 use crate::theme::Theme;
-use crate::{gradle_ui, logcat_ui, monitor_ui};
+use crate::{gradle_ui, logcat_ui, monitor_ui, processes_ui};
 
 pub fn render(f: &mut Frame, app: &App, theme: &Theme) {
     let area = f.area();
@@ -94,6 +94,7 @@ fn render_panel(
         PanelId::Logcat => logcat_ui::render(f, area, app, theme, focused),
         PanelId::Gradle => gradle_ui::render(f, area, app, theme, focused),
         PanelId::Monitor => monitor_ui::render(f, area, app, theme, focused),
+        PanelId::Processes => processes_ui::render(f, area, app, theme, focused),
         other => render_stub(f, area, other, theme, focused),
     }
 }
@@ -133,7 +134,7 @@ fn render_footer(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         Line::from(Span::styled(flash.text.clone(), style))
     } else {
         Line::from(vec![
-            Span::styled("Alt+1..5 toggle  ", Style::default().fg(theme.muted)),
+            Span::styled("Alt+1..6 toggle  ", Style::default().fg(theme.muted)),
             Span::styled("letter: focus  ", Style::default().fg(theme.muted)),
             Span::styled("/: filter logcat  ", Style::default().fg(theme.muted)),
             Span::styled("r: run gradle  ", Style::default().fg(theme.muted)),
@@ -184,6 +185,13 @@ fn render_help(f: &mut Frame, area: Rect, theme: &Theme) {
         Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
     )));
     lines.push(Line::from("  /  enter filter mode (tag/message substring)"));
+    lines.push(Line::from("  L  cycle min level (V→D→I→W→E→V)"));
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        "Processes",
+        Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+    )));
+    lines.push(Line::from("  j/k or ↓/↑  navigate"));
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
         "Gradle",
