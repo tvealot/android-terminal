@@ -1,5 +1,7 @@
 use std::collections::HashSet;
 
+use crate::adb::devices::DeviceEntry;
+use crate::adb::DeviceHandle;
 use crate::config::{save_state, Config, State};
 use crate::panel::{def, Feature, PanelId, PANELS};
 
@@ -16,12 +18,17 @@ pub struct App {
     pub monitor: crate::monitor::MonitorState,
     pub processes: crate::processes::ProcessesState,
     pub input_mode: InputMode,
+    pub device: DeviceHandle,
+    pub devices: Vec<DeviceEntry>,
+    pub device_selector: Option<usize>,
+    pub package_input: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InputMode {
     Normal,
     LogcatFilter,
+    LogcatPackage,
 }
 
 pub struct StatusFlash {
@@ -31,7 +38,7 @@ pub struct StatusFlash {
 }
 
 impl App {
-    pub fn new(config: Config, state: State, jvm_available: bool) -> Self {
+    pub fn new(config: Config, state: State, jvm_available: bool, device: DeviceHandle) -> Self {
         let mut visible: HashSet<PanelId> = state.visible.into_iter().collect();
         if !jvm_available {
             visible.remove(&PanelId::Gradle);
@@ -55,7 +62,25 @@ impl App {
             monitor: crate::monitor::MonitorState::default(),
             processes: crate::processes::ProcessesState::default(),
             input_mode: InputMode::Normal,
+            device,
+            devices: Vec::new(),
+            device_selector: None,
+            package_input: String::new(),
         }
+    }
+
+    pub fn set_device(&mut self, serial: Option<String>) {
+        if let Ok(mut guard) = self.device.lock() {
+            *guard = serial.clone();
+        }
+        match serial {
+            Some(s) => self.flash(format!("device: {}", s), false),
+            None => self.flash("device: (default)".to_string(), false),
+        }
+    }
+
+    pub fn current_device(&self) -> Option<String> {
+        self.device.lock().ok().and_then(|g| g.clone())
     }
 
     pub fn toggle_panel(&mut self, id: PanelId) {

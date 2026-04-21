@@ -1,9 +1,9 @@
 use std::collections::VecDeque;
-use std::process::Command;
 use std::sync::mpsc::Sender;
 use std::thread;
 use std::time::Duration;
 
+use crate::adb::{self, DeviceHandle};
 use crate::dispatch::Event;
 
 const HISTORY: usize = 60;
@@ -50,9 +50,9 @@ impl MonitorState {
     }
 }
 
-pub fn spawn_poller(tx: Sender<Event>) {
+pub fn spawn_poller(handle: DeviceHandle, tx: Sender<Event>) {
     thread::spawn(move || loop {
-        match sample() {
+        match sample(&handle) {
             Ok(s) => {
                 if tx.send(Event::Monitor(s)).is_err() {
                     break;
@@ -69,10 +69,10 @@ pub fn spawn_poller(tx: Sender<Event>) {
     });
 }
 
-fn sample() -> Result<MonitorSample, String> {
-    let battery_raw = adb_shell(&["dumpsys", "battery"])?;
+fn sample(handle: &DeviceHandle) -> Result<MonitorSample, String> {
+    let battery_raw = adb_shell(handle, &["dumpsys", "battery"])?;
     let (level, temp) = parse_battery(&battery_raw);
-    let meminfo_raw = adb_shell(&["cat", "/proc/meminfo"])?;
+    let meminfo_raw = adb_shell(handle, &["cat", "/proc/meminfo"])?;
     let (total, available) = parse_meminfo(&meminfo_raw);
     Ok(MonitorSample {
         battery_percent: level,
@@ -82,8 +82,8 @@ fn sample() -> Result<MonitorSample, String> {
     })
 }
 
-fn adb_shell(args: &[&str]) -> Result<String, String> {
-    let mut cmd = Command::new("adb");
+fn adb_shell(handle: &DeviceHandle, args: &[&str]) -> Result<String, String> {
+    let mut cmd = adb::command(handle);
     cmd.arg("shell");
     for a in args {
         cmd.arg(a);

@@ -27,6 +27,10 @@ pub fn render(f: &mut Frame, app: &App, theme: &Theme) {
     if app.show_help {
         render_help(f, area, theme);
     }
+
+    if let Some(idx) = app.device_selector {
+        render_device_selector(f, area, app, theme, idx);
+    }
 }
 
 fn render_header(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
@@ -35,6 +39,18 @@ fn render_header(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         Style::default().fg(theme.bg).bg(theme.accent).add_modifier(Modifier::BOLD),
     )];
     spans.push(Span::raw(" "));
+    let dev_label = match app.current_device() {
+        Some(s) => format!("[{}]", shorten_serial(&s)),
+        None => match app.devices.len() {
+            0 => "[no device]".to_string(),
+            1 => format!("[{}]", shorten_serial(&app.devices[0].serial)),
+            n => format!("[{} devices, d to pick]", n),
+        },
+    };
+    spans.push(Span::styled(
+        format!("{} ", dev_label),
+        Style::default().fg(theme.muted),
+    ));
     for p in PANELS {
         let visible = app.visible.contains(&p.id);
         let focused = app.focus == p.id && visible;
@@ -129,6 +145,19 @@ fn render_footer(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
             Span::styled("_  ", Style::default().fg(theme.warn)),
             Span::styled("Enter/Esc: exit", Style::default().fg(theme.muted)),
         ])
+    } else if app.input_mode == crate::app::InputMode::LogcatPackage {
+        Line::from(vec![
+            Span::styled(
+                "package: ",
+                Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(app.package_input.clone(), Style::default().fg(theme.fg)),
+            Span::styled("_  ", Style::default().fg(theme.warn)),
+            Span::styled(
+                "Enter: apply  Esc: cancel  (empty = clear)",
+                Style::default().fg(theme.muted),
+            ),
+        ])
     } else if let Some(flash) = &app.status {
         let style = Style::default().fg(if flash.error { theme.error } else { theme.accent });
         Line::from(Span::styled(flash.text.clone(), style))
@@ -136,8 +165,10 @@ fn render_footer(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         Line::from(vec![
             Span::styled("Alt+1..6 toggle  ", Style::default().fg(theme.muted)),
             Span::styled("letter: focus  ", Style::default().fg(theme.muted)),
-            Span::styled("/: filter logcat  ", Style::default().fg(theme.muted)),
-            Span::styled("r: run gradle  ", Style::default().fg(theme.muted)),
+            Span::styled("d: device  ", Style::default().fg(theme.muted)),
+            Span::styled("/: filter  ", Style::default().fg(theme.muted)),
+            Span::styled("P: package  ", Style::default().fg(theme.muted)),
+            Span::styled("r: gradle  ", Style::default().fg(theme.muted)),
             Span::styled("?: help  ", Style::default().fg(theme.muted)),
             Span::styled("q: quit", Style::default().fg(theme.muted)),
         ])
@@ -186,6 +217,8 @@ fn render_help(f: &mut Frame, area: Rect, theme: &Theme) {
     )));
     lines.push(Line::from("  /  enter filter mode (tag/message substring)"));
     lines.push(Line::from("  L  cycle min level (V→D→I→W→E→V)"));
+    lines.push(Line::from("  P  filter by package (pidof)"));
+    lines.push(Line::from("  X  clear package filter"));
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
         "Processes",
@@ -199,8 +232,74 @@ fn render_help(f: &mut Frame, area: Rect, theme: &Theme) {
     )));
     lines.push(Line::from("  r  run default task"));
     lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        "Device",
+        Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+    )));
+    lines.push(Line::from("  d  open device selector"));
+    lines.push(Line::from(""));
     lines.push(Line::from("  ?  toggle this help"));
     lines.push(Line::from("  q  quit"));
 
+    f.render_widget(Paragraph::new(lines), inner);
+}
+
+fn shorten_serial(s: &str) -> String {
+    if s.len() <= 12 {
+        s.to_string()
+    } else {
+        format!("{}…{}", &s[..4], &s[s.len() - 4..])
+    }
+}
+
+fn render_device_selector(f: &mut Frame, area: Rect, app: &App, theme: &Theme, selected: usize) {
+    let width = area.width.min(60);
+    let rows = app.devices.len().max(1);
+    let height = (rows as u16 + 4).min(area.height);
+    let rect = Rect {
+        x: area.x + (area.width - width) / 2,
+        y: area.y + (area.height - height) / 2,
+        width,
+        height,
+    };
+    f.render_widget(Clear, rect);
+    let block = Block::default()
+        .title(Span::styled(
+            " select device ",
+            Style::default().fg(theme.fg).add_modifier(Modifier::BOLD),
+        ))
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(theme.accent));
+    let inner = block.inner(rect);
+    f.render_widget(block, rect);
+
+    let current = app.current_device();
+    let mut lines = Vec::new();
+    for (i, d) in app.devices.iter().enumerate() {
+        let is_current = Some(&d.serial) == current.as_ref();
+        let marker = if is_current { "●" } else { " " };
+        let state_color = if d.is_ready() { theme.success } else { theme.warn };
+        let row_style = if i == selected {
+            Style::default().fg(theme.bg).bg(theme.accent).add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(theme.fg)
+        };
+        lines.push(Line::from(vec![
+            Span::styled(format!(" {} ", marker), row_style),
+            Span::styled(format!("{:<24} ", d.serial), row_style),
+            Span::styled(format!("{:<10}", d.state), Style::default().fg(state_color)),
+        ]));
+    }
+    if app.devices.is_empty() {
+        lines.push(Line::from(Span::styled(
+            "  no devices connected",
+            Style::default().fg(theme.muted),
+        )));
+    }
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        "  Enter: select   j/k: move   Esc: close",
+        Style::default().fg(theme.muted),
+    )));
     f.render_widget(Paragraph::new(lines), inner);
 }

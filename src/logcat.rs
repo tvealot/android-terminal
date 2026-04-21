@@ -5,6 +5,7 @@ const MAX_LINES: usize = 2000;
 #[derive(Debug, Clone)]
 pub struct LogLine {
     pub timestamp: String,
+    pub pid: u32,
     pub level: LogLevel,
     pub tag: String,
     pub message: String,
@@ -66,13 +67,14 @@ impl LogLine {
         let mut parts = trimmed.splitn(7, ' ').filter(|s| !s.is_empty());
         let date = parts.next()?;
         let time = parts.next()?;
-        let _pid = parts.next()?;
+        let pid_str = parts.next()?;
         let _tid = parts.next()?;
         let level = parts.next()?;
         let tag = parts.next()?;
         let message = parts.next().unwrap_or("").trim_start_matches(':').trim_start();
         Some(Self {
             timestamp: format!("{} {}", date, time),
+            pid: pid_str.parse().unwrap_or(0),
             level: LogLevel::from_char(level.chars().next().unwrap_or('I')),
             tag: tag.trim_end_matches(':').to_string(),
             message: message.to_string(),
@@ -84,6 +86,8 @@ pub struct LogcatState {
     pub lines: VecDeque<LogLine>,
     pub filter: String,
     pub min_level: LogLevel,
+    pub filter_package: Option<String>,
+    pub filter_pid: Option<u32>,
 }
 
 impl Default for LogcatState {
@@ -92,6 +96,8 @@ impl Default for LogcatState {
             lines: VecDeque::new(),
             filter: String::new(),
             min_level: LogLevel::Verbose,
+            filter_package: None,
+            filter_pid: None,
         }
     }
 }
@@ -104,17 +110,30 @@ impl LogcatState {
         self.lines.push_back(line);
     }
 
+    pub fn clear_package_filter(&mut self) {
+        self.filter_package = None;
+        self.filter_pid = None;
+    }
+
     pub fn visible<'a>(&'a self) -> Box<dyn Iterator<Item = &'a LogLine> + 'a> {
         let min = self.min_level;
-        if self.filter.is_empty() {
-            Box::new(self.lines.iter().filter(move |l| l.level >= min))
-        } else {
-            let needle = self.filter.to_lowercase();
-            Box::new(self.lines.iter().filter(move |l| {
-                l.level >= min
-                    && (l.tag.to_lowercase().contains(&needle)
-                        || l.message.to_lowercase().contains(&needle))
-            }))
-        }
+        let needle = if self.filter.is_empty() { None } else { Some(self.filter.to_lowercase()) };
+        let pid = self.filter_pid;
+        Box::new(self.lines.iter().filter(move |l| {
+            if l.level < min {
+                return false;
+            }
+            if let Some(p) = pid {
+                if l.pid != p {
+                    return false;
+                }
+            }
+            if let Some(n) = &needle {
+                if !l.tag.to_lowercase().contains(n) && !l.message.to_lowercase().contains(n) {
+                    return false;
+                }
+            }
+            true
+        }))
     }
 }

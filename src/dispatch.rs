@@ -1,5 +1,6 @@
 use std::sync::mpsc::{channel, Receiver, Sender};
 
+use crate::adb::devices::DeviceEntry;
 use crate::gradle::GradleEvent;
 use crate::logcat::LogLine;
 use crate::monitor::MonitorSample;
@@ -10,6 +11,7 @@ pub enum Event {
     Gradle(GradleEvent),
     Monitor(MonitorSample),
     Processes(Vec<ProcessInfo>),
+    Devices(Vec<DeviceEntry>),
     Status { text: String, error: bool },
 }
 

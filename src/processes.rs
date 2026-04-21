@@ -1,8 +1,8 @@
-use std::process::Command;
 use std::sync::mpsc::Sender;
 use std::thread;
 use std::time::Duration;
 
+use crate::adb::{self, DeviceHandle};
 use crate::dispatch::Event;
 
 const POLL_INTERVAL_MS: u64 = 3000;
@@ -32,9 +32,9 @@ impl ProcessesState {
     }
 }
 
-pub fn spawn_poller(tx: Sender<Event>) {
+pub fn spawn_poller(handle: DeviceHandle, tx: Sender<Event>) {
     thread::spawn(move || loop {
-        match sample() {
+        match sample(&handle) {
             Ok(procs) => {
                 if tx.send(Event::Processes(procs)).is_err() {
                     break;
@@ -51,9 +51,9 @@ pub fn spawn_poller(tx: Sender<Event>) {
     });
 }
 
-fn sample() -> Result<Vec<ProcessInfo>, String> {
+fn sample(handle: &DeviceHandle) -> Result<Vec<ProcessInfo>, String> {
     // toybox ps on Android: PID USER RSS NAME
-    let output = Command::new("adb")
+    let output = adb::command(handle)
         .args(["shell", "ps", "-A", "-o", "PID,USER,RSS,NAME"])
         .output()
         .map_err(|e| e.to_string())?;

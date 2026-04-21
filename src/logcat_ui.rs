@@ -16,12 +16,16 @@ pub fn render(f: &mut Frame, area: Rect, app: &App, theme: &Theme, focused: bool
     } else {
         format!(" [{}+]", level.short())
     };
+    let pkg_part = match (&app.logcat.filter_package, app.logcat.filter_pid) {
+        (Some(p), Some(pid)) => format!(" pkg={} pid={}", p, pid),
+        _ => String::new(),
+    };
     let filter_hint = if app.input_mode == crate::app::InputMode::LogcatFilter {
-        format!(" logcat{} — filter: {}_ ", level_part, app.logcat.filter)
+        format!(" logcat{}{} — filter: {}_ ", level_part, pkg_part, app.logcat.filter)
     } else if !app.logcat.filter.is_empty() {
-        format!(" logcat{} — filter: {} ", level_part, app.logcat.filter)
+        format!(" logcat{}{} — filter: {} ", level_part, pkg_part, app.logcat.filter)
     } else {
-        format!(" logcat{} ", level_part)
+        format!(" logcat{}{} ", level_part, pkg_part)
     };
     let block = Block::default()
         .title(Span::styled(

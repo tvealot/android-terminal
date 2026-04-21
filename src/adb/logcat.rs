@@ -1,13 +1,14 @@
 use std::io::{BufRead, BufReader};
-use std::process::{Command, Stdio};
+use std::process::{Child, Stdio};
 use std::sync::mpsc::Sender;
 use std::thread;
 
+use crate::adb::{command, DeviceHandle};
 use crate::dispatch::Event;
 use crate::logcat::LogLine;
 
-pub fn spawn(tx: Sender<Event>) -> std::io::Result<()> {
-    let mut child = Command::new("adb")
+pub fn spawn(handle: &DeviceHandle, tx: Sender<Event>) -> std::io::Result<Child> {
+    let mut child = command(handle)
         .args(["logcat", "-v", "threadtime"])
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -23,7 +24,6 @@ pub fn spawn(tx: Sender<Event>) -> std::io::Result<()> {
                 }
             }
         }
-        let _ = child.wait();
     });
-    Ok(())
+    Ok(child)
 }
