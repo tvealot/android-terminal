@@ -2,10 +2,14 @@ mod adb;
 mod app;
 mod config;
 mod dispatch;
+mod files;
+mod files_ui;
 mod gradle;
 mod gradle_ui;
 mod logcat;
 mod logcat_ui;
+mod monitor_ui;
+mod network_ui;
 mod panel;
 mod theme;
 mod ui;
@@ -34,12 +38,14 @@ fn main() -> Result<()> {
 
     let cfg = config::load_config();
     let state = config::load_state();
+    let adb_available = adb::is_available();
     let jvm_available = gradle::jvm_available();
-    let app = App::new(cfg, state, jvm_available);
+    let app = App::new(cfg, state, adb_available, jvm_available);
 
     let dispatcher = DispatchContext::new();
 
-    if adb::is_available() {
+    if adb_available {
+        adb::devices::spawn(dispatcher.tx.clone());
         let _ = adb::logcat::spawn(dispatcher.tx.clone());
     } else {
         let _ = dispatcher.tx.send(Event::Status {
@@ -84,6 +90,7 @@ fn run_loop(
             match ev {
                 Event::Logcat(line) => app.logcat.push(line),
                 Event::Gradle(ev) => app.gradle.apply(ev),
+                Event::Devices(devices) => app.devices = devices,
                 Event::Status { text, error } => app.flash(text, error),
             }
         }
@@ -114,6 +121,10 @@ fn handle_key(app: &mut App, key: KeyEvent, dispatcher: &DispatchContext) {
                 return;
             }
         }
+    }
+
+    if !app.show_help && app.focus == PanelId::Files && app.files.handle_key(key) {
+        return;
     }
 
     match key.code {

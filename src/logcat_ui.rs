@@ -42,7 +42,9 @@ pub fn render(f: &mut Frame, area: Rect, app: &App, theme: &Theme, focused: bool
                 ),
                 Span::styled(
                     format!("{} ", level_str),
-                    Style::default().fg(level_color).add_modifier(Modifier::BOLD),
+                    Style::default()
+                        .fg(level_color)
+                        .add_modifier(Modifier::BOLD),
                 ),
                 Span::styled(
                     format!("{:<20} ", truncate(&line.tag, 20)),

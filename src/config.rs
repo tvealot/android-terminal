@@ -28,7 +28,9 @@ pub struct UiConfig {
 
 impl Default for UiConfig {
     fn default() -> Self {
-        Self { theme: default_theme() }
+        Self {
+            theme: default_theme(),
+        }
     }
 }
 

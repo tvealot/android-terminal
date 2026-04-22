@@ -2,6 +2,7 @@
 name = "droidscope"
 version = "0.1.0"
 edition = "2021"
+rust-version = "1.88"
 description = "A customizable terminal UI for Android developers with live Gradle task monitoring"
 license = "MIT"
 repository = "https://github.com/tvealot/android-terminal"

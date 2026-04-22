@@ -70,11 +70,26 @@ impl GradleState {
     pub fn apply(&mut self, ev: GradleEvent) {
         match ev {
             GradleEvent::TaskStart { path, ts } => {
-                self.active.insert(path.clone(), ActiveTask { path, started_at: ts });
+                self.active.insert(
+                    path.clone(),
+                    ActiveTask {
+                        path,
+                        started_at: ts,
+                    },
+                );
             }
-            GradleEvent::TaskFinish { path, outcome, duration_ms, .. } => {
+            GradleEvent::TaskFinish {
+                path,
+                outcome,
+                duration_ms,
+                ..
+            } => {
                 self.active.remove(&path);
-                self.completed.push(CompletedTask { path, outcome, duration_ms });
+                self.completed.push(CompletedTask {
+                    path,
+                    outcome,
+                    duration_ms,
+                });
                 if self.completed.len() > 200 {
                     let excess = self.completed.len() - 200;
                     self.completed.drain(..excess);
@@ -93,12 +108,7 @@ impl GradleState {
     }
 }
 
-pub fn spawn(
-    jar: &Path,
-    project_dir: &Path,
-    task: &str,
-    tx: Sender<Event>,
-) -> std::io::Result<()> {
+pub fn spawn(jar: &Path, project_dir: &Path, task: &str, tx: Sender<Event>) -> std::io::Result<()> {
     let mut child = Command::new("java")
         .arg("-jar")
         .arg(jar)

@@ -18,22 +18,45 @@ Inspired by [measure-sh/holo](https://github.com/measure-sh/holo), with two extr
 
 ## Layout
 
+droidscope now uses a sectioned layout inspired by `holo`:
+
+- top: `logcat`
+- middle: `monitor` + `network`
+- bottom: `files` + `gradle`
+
 ```
 src/
   main.rs            event loop, hotkey dispatch
   app.rs             App state (visible panels, focus, Gradle state, logcat buffer)
   config.rs          ~/.config/droidscope/config.toml + state.json
   dispatch.rs        mpsc Event channel
+  files.rs           local project tree/detail state for the files panel
   panel.rs           PanelId + static PANELS registry + feature gates
   theme.rs           Dark/Light themes
   ui.rs              dynamic layout from visible panels + header/footer/help
   logcat.rs / logcat_ui.rs
-  gradle.rs  / gradle_ui.rs
+  gradle.rs / gradle_ui.rs
+  monitor_ui.rs / files_ui.rs / network_ui.rs
   adb/               subprocess wrappers
 sidecar/gradle-agent/ Kotlin fat-jar using GradleConnector + ProgressListener
 ```
 
 ## Build
+
+Requires Rust 1.88 or newer.
+
+If you installed Rust with Homebrew:
+
+```sh
+brew upgrade rust
+```
+
+If you use `rustup`:
+
+```sh
+rustup toolchain install 1.88.0
+rustup override set 1.88.0
+```
 
 ```sh
 cargo build --release
@@ -79,6 +102,10 @@ Key bindings:
 | `Alt+1..5`  | toggle panel visibility             |
 | `l/m/g/f/n` | focus logcat / monitor / gradle / files / network |
 | `r`         | run the configured Gradle task      |
+| `Enter`     | expand directory / preview file in `files` |
+| `Tab`       | switch tree/detail pane in `files`  |
+| `←`         | collapse directory in `files`       |
+| `Backspace` | close preview in `files`            |
 | `?`         | help overlay                        |
 | `q` / Esc   | quit                                |
 
@@ -108,11 +135,10 @@ flash shows `install JDK 17+ to enable Gradle panel`.
 Panels currently implemented:
 
 - `logcat` — real `adb logcat -v threadtime` subprocess, 2000-line ring buffer
+- `monitor` — runtime health, connected `adb` devices, focus/layout summary
 - `gradle` — live Tooling-API events
-
-Panels stubbed (`Coming soon`): `monitor`, `files`, `network`. They already
-participate in the toggle/focus/layout system; only the content renderers
-need to land.
+- `files` — local project tree with expandable directories and a preview/detail pane for text files
+- `network` — filtered network-related logcat view (`okhttp`, `http`, `socket`, `dns`, etc.)
 
 ## License
 

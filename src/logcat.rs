@@ -48,7 +48,11 @@ impl LogLine {
         let _tid = parts.next()?;
         let level = parts.next()?;
         let tag = parts.next()?;
-        let message = parts.next().unwrap_or("").trim_start_matches(':').trim_start();
+        let message = parts
+            .next()
+            .unwrap_or("")
+            .trim_start_matches(':')
+            .trim_start();
         Some(Self {
             timestamp: format!("{} {}", date, time),
             level: LogLevel::from_char(level.chars().next().unwrap_or('I')),
@@ -78,8 +82,7 @@ impl LogcatState {
         } else {
             let needle = self.filter.to_lowercase();
             Box::new(self.lines.iter().filter(move |l| {
-                l.tag.to_lowercase().contains(&needle)
-                    || l.message.to_lowercase().contains(&needle)
+                l.tag.to_lowercase().contains(&needle) || l.message.to_lowercase().contains(&needle)
             }))
         }
     }

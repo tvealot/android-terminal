@@ -6,6 +6,7 @@ use crate::logcat::LogLine;
 pub enum Event {
     Logcat(LogLine),
     Gradle(GradleEvent),
+    Devices(Vec<String>),
     Status { text: String, error: bool },
 }
 

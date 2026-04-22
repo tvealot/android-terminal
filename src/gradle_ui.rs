@@ -40,7 +40,9 @@ pub fn render(f: &mut Frame, area: Rect, app: &App, theme: &Theme, focused: bool
 fn render_active(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     let title = Line::from(vec![Span::styled(
         format!(" active tasks ({}) ", app.gradle.active.len()),
-        Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+        Style::default()
+            .fg(theme.accent)
+            .add_modifier(Modifier::BOLD),
     )]);
     let spinner = spinner_char();
 
@@ -57,14 +59,14 @@ fn render_active(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         } else {
             "idle. press 'r' to run default task"
         };
-        lines.push(Line::from(Span::styled(msg, Style::default().fg(theme.muted))));
+        lines.push(Line::from(Span::styled(
+            msg,
+            Style::default().fg(theme.muted),
+        )));
     } else {
         for task in app.gradle.active.values() {
             lines.push(Line::from(vec![
-                Span::styled(
-                    format!("{} ", spinner),
-                    Style::default().fg(theme.warn),
-                ),
+                Span::styled(format!("{} ", spinner), Style::default().fg(theme.warn)),
                 Span::styled(task.path.clone(), Style::default().fg(theme.fg)),
             ]));
         }
@@ -105,7 +107,9 @@ fn render_history(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         .collect();
     let mut all = vec![Line::from(Span::styled(
         " history ",
-        Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+        Style::default()
+            .fg(theme.accent)
+            .add_modifier(Modifier::BOLD),
     ))];
     all.extend(history);
     f.render_widget(Paragraph::new(all), area);

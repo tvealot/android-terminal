@@ -1,18 +1,22 @@
 use std::collections::HashSet;
 
 use crate::config::{save_state, Config, State};
+use crate::files::FilesState;
 use crate::panel::{def, Feature, PanelId, PANELS};
 
 pub struct App {
     pub config: Config,
     pub visible: HashSet<PanelId>,
     pub focus: PanelId,
+    pub adb_available: bool,
     pub jvm_available: bool,
+    pub devices: Vec<String>,
     pub status: Option<StatusFlash>,
     pub show_help: bool,
     pub should_quit: bool,
     pub logcat: crate::logcat::LogcatState,
     pub gradle: crate::gradle::GradleState,
+    pub files: FilesState,
 }
 
 pub struct StatusFlash {
@@ -22,7 +26,7 @@ pub struct StatusFlash {
 }
 
 impl App {
-    pub fn new(config: Config, state: State, jvm_available: bool) -> Self {
+    pub fn new(config: Config, state: State, adb_available: bool, jvm_available: bool) -> Self {
         let mut visible: HashSet<PanelId> = state.visible.into_iter().collect();
         if !jvm_available {
             visible.remove(&PanelId::Gradle);
@@ -34,10 +38,13 @@ impl App {
         };
 
         Self {
+            files: FilesState::new(config.gradle.project_dir.clone()),
             config,
             visible,
             focus,
+            adb_available,
             jvm_available,
+            devices: Vec::new(),
             status: None,
             show_help: false,
             should_quit: false,
@@ -49,10 +56,7 @@ impl App {
     pub fn toggle_panel(&mut self, id: PanelId) {
         let d = def(id);
         if d.requires == Feature::Jvm && !self.jvm_available {
-            self.flash(
-                "install JDK 17+ to enable Gradle panel".to_string(),
-                true,
-            );
+            self.flash("install JDK 17+ to enable Gradle panel".to_string(), true);
             return;
         }
         if self.visible.contains(&id) {
@@ -73,7 +77,11 @@ impl App {
             self.persist();
         } else {
             self.flash(
-                format!("panel '{}' is hidden (Alt+{} to show)", def(id).name, def(id).toggle_key),
+                format!(
+                    "panel '{}' is hidden (Alt+{} to show)",
+                    def(id).name,
+                    def(id).toggle_key
+                ),
                 false,
             );
         }
