@@ -10,9 +10,27 @@ use crate::theme::Theme;
 
 pub fn render(f: &mut Frame, area: Rect, app: &App, theme: &Theme, focused: bool) {
     let border_color = if focused { theme.accent } else { theme.surface };
+    let level = app.logcat.min_level;
+    let level_part = if level == crate::logcat::LogLevel::Verbose {
+        String::new()
+    } else {
+        format!(" [{}+]", level.short())
+    };
+    let pkg_part = match (&app.logcat.filter_package, app.logcat.filter_pid) {
+        (Some(p), Some(pid)) => format!(" pkg={} pid={}", p, pid),
+        _ => String::new(),
+    };
+    let paused_part = if app.logcat.paused { " [PAUSED]" } else { "" };
+    let filter_hint = if app.input_mode == crate::app::InputMode::LogcatFilter {
+        format!(" logcat{}{}{} — filter: {}_ ", level_part, pkg_part, paused_part, app.logcat.filter)
+    } else if !app.logcat.filter.is_empty() {
+        format!(" logcat{}{}{} — filter: {} ", level_part, pkg_part, paused_part, app.logcat.filter)
+    } else {
+        format!(" logcat{}{}{} ", level_part, pkg_part, paused_part)
+    };
     let block = Block::default()
         .title(Span::styled(
-            " logcat ",
+            filter_hint,
             Style::default().fg(theme.fg).add_modifier(Modifier::BOLD),
         ))
         .borders(Borders::ALL)

@@ -1,22 +1,35 @@
 use std::collections::HashSet;
 
+use crate::adb::devices::DeviceEntry;
+use crate::adb::DeviceHandle;
 use crate::config::{save_state, Config, State};
-use crate::files::FilesState;
 use crate::panel::{def, Feature, PanelId, PANELS};
 
 pub struct App {
     pub config: Config,
     pub visible: HashSet<PanelId>,
     pub focus: PanelId,
-    pub adb_available: bool,
     pub jvm_available: bool,
-    pub devices: Vec<String>,
     pub status: Option<StatusFlash>,
     pub show_help: bool,
     pub should_quit: bool,
     pub logcat: crate::logcat::LogcatState,
     pub gradle: crate::gradle::GradleState,
-    pub files: FilesState,
+    pub monitor: crate::monitor::MonitorState,
+    pub processes: crate::processes::ProcessesState,
+    pub issues: crate::issues::IssuesState,
+    pub input_mode: InputMode,
+    pub device: DeviceHandle,
+    pub devices: Vec<DeviceEntry>,
+    pub device_selector: Option<usize>,
+    pub package_input: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InputMode {
+    Normal,
+    LogcatFilter,
+    LogcatPackage,
 }
 
 pub struct StatusFlash {
@@ -26,7 +39,7 @@ pub struct StatusFlash {
 }
 
 impl App {
-    pub fn new(config: Config, state: State, adb_available: bool, jvm_available: bool) -> Self {
+    pub fn new(config: Config, state: State, jvm_available: bool, device: DeviceHandle) -> Self {
         let mut visible: HashSet<PanelId> = state.visible.into_iter().collect();
         if !jvm_available {
             visible.remove(&PanelId::Gradle);
@@ -38,25 +51,64 @@ impl App {
         };
 
         Self {
-            files: FilesState::new(config.gradle.project_dir.clone()),
             config,
             visible,
             focus,
-            adb_available,
             jvm_available,
-            devices: Vec::new(),
             status: None,
             show_help: false,
             should_quit: false,
             logcat: crate::logcat::LogcatState::default(),
             gradle: crate::gradle::GradleState::default(),
+            monitor: crate::monitor::MonitorState::default(),
+            processes: crate::processes::ProcessesState::default(),
+            issues: crate::issues::IssuesState::default(),
+            input_mode: InputMode::Normal,
+            device,
+            devices: Vec::new(),
+            device_selector: None,
+            package_input: String::new(),
         }
+    }
+
+    pub fn set_device(&mut self, serial: Option<String>) {
+        if let Ok(mut guard) = self.device.lock() {
+            *guard = serial.clone();
+        }
+        match serial {
+            Some(s) => self.flash(format!("device: {}", s), false),
+            None => self.flash("device: (default)".to_string(), false),
+        }
+    }
+
+    pub fn current_device(&self) -> Option<String> {
+        self.device.lock().ok().and_then(|g| g.clone())
+    }
+
+    pub fn cycle_focus(&mut self, forward: bool) {
+        let visible = self.visible_ordered();
+        if visible.len() < 2 {
+            return;
+        }
+        let Some(pos) = visible.iter().position(|id| *id == self.focus) else {
+            self.focus = visible[0];
+            return;
+        };
+        let next = if forward {
+            (pos + 1) % visible.len()
+        } else {
+            (pos + visible.len() - 1) % visible.len()
+        };
+        self.focus = visible[next];
     }
 
     pub fn toggle_panel(&mut self, id: PanelId) {
         let d = def(id);
         if d.requires == Feature::Jvm && !self.jvm_available {
-            self.flash("install JDK 17+ to enable Gradle panel".to_string(), true);
+            self.flash(
+                "install JDK 17+ to enable Gradle panel".to_string(),
+                true,
+            );
             return;
         }
         if self.visible.contains(&id) {
@@ -77,11 +129,7 @@ impl App {
             self.persist();
         } else {
             self.flash(
-                format!(
-                    "panel '{}' is hidden (Alt+{} to show)",
-                    def(id).name,
-                    def(id).toggle_key
-                ),
+                format!("panel '{}' is hidden (Alt+{} to show)", def(id).name, def(id).toggle_key),
                 false,
             );
         }

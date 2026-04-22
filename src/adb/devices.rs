@@ -1,13 +1,25 @@
 use std::process::Command;
-
 use std::sync::mpsc::Sender;
 use std::thread;
 use std::time::Duration;
 
 use crate::dispatch::Event;
 
-#[allow(dead_code)]
-pub fn list() -> Vec<String> {
+const POLL_INTERVAL_MS: u64 = 4000;
+
+#[derive(Debug, Clone)]
+pub struct DeviceEntry {
+    pub serial: String,
+    pub state: String,
+}
+
+impl DeviceEntry {
+    pub fn is_ready(&self) -> bool {
+        self.state == "device"
+    }
+}
+
+pub fn list_all() -> Vec<DeviceEntry> {
     let Ok(output) = Command::new("adb").arg("devices").output() else {
         return Vec::new();
     };
@@ -19,27 +31,20 @@ pub fn list() -> Vec<String> {
             let mut parts = line.split_whitespace();
             let serial = parts.next()?;
             let state = parts.next()?;
-            if state == "device" {
-                Some(serial.to_string())
-            } else {
-                None
-            }
+            Some(DeviceEntry {
+                serial: serial.to_string(),
+                state: state.to_string(),
+            })
         })
         .collect()
 }
 
-pub fn spawn(tx: Sender<Event>) {
-    thread::spawn(move || {
-        let mut previous: Option<Vec<String>> = None;
-        loop {
-            let devices = list();
-            if previous.as_ref() != Some(&devices) {
-                if tx.send(Event::Devices(devices.clone())).is_err() {
-                    break;
-                }
-                previous = Some(devices);
-            }
-            thread::sleep(Duration::from_secs(3));
+pub fn spawn_poller(tx: Sender<Event>) {
+    thread::spawn(move || loop {
+        let list = list_all();
+        if tx.send(Event::Devices(list)).is_err() {
+            break;
         }
+        thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
     });
 }

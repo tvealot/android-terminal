@@ -5,12 +5,13 @@ const MAX_LINES: usize = 2000;
 #[derive(Debug, Clone)]
 pub struct LogLine {
     pub timestamp: String,
+    pub pid: u32,
     pub level: LogLevel,
     pub tag: String,
     pub message: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum LogLevel {
     Verbose,
     Debug,
@@ -32,6 +33,28 @@ impl LogLevel {
             _ => Self::Info,
         }
     }
+
+    pub fn short(self) -> &'static str {
+        match self {
+            Self::Verbose => "V",
+            Self::Debug => "D",
+            Self::Info => "I",
+            Self::Warn => "W",
+            Self::Error => "E",
+            Self::Fatal => "F",
+        }
+    }
+
+    pub fn next_cycle(self) -> Self {
+        match self {
+            Self::Verbose => Self::Debug,
+            Self::Debug => Self::Info,
+            Self::Info => Self::Warn,
+            Self::Warn => Self::Error,
+            Self::Error => Self::Verbose,
+            Self::Fatal => Self::Verbose,
+        }
+    }
 }
 
 impl LogLine {
@@ -44,17 +67,14 @@ impl LogLine {
         let mut parts = trimmed.splitn(7, ' ').filter(|s| !s.is_empty());
         let date = parts.next()?;
         let time = parts.next()?;
-        let _pid = parts.next()?;
+        let pid_str = parts.next()?;
         let _tid = parts.next()?;
         let level = parts.next()?;
         let tag = parts.next()?;
-        let message = parts
-            .next()
-            .unwrap_or("")
-            .trim_start_matches(':')
-            .trim_start();
+        let message = parts.next().unwrap_or("").trim_start_matches(':').trim_start();
         Some(Self {
             timestamp: format!("{} {}", date, time),
+            pid: pid_str.parse().unwrap_or(0),
             level: LogLevel::from_char(level.chars().next().unwrap_or('I')),
             tag: tag.trim_end_matches(':').to_string(),
             message: message.to_string(),
@@ -62,28 +82,67 @@ impl LogLine {
     }
 }
 
-#[derive(Default)]
 pub struct LogcatState {
     pub lines: VecDeque<LogLine>,
     pub filter: String,
+    pub min_level: LogLevel,
+    pub filter_package: Option<String>,
+    pub filter_pid: Option<u32>,
+    pub paused: bool,
+}
+
+impl Default for LogcatState {
+    fn default() -> Self {
+        Self {
+            lines: VecDeque::new(),
+            filter: String::new(),
+            min_level: LogLevel::Verbose,
+            filter_package: None,
+            filter_pid: None,
+            paused: false,
+        }
+    }
 }
 
 impl LogcatState {
     pub fn push(&mut self, line: LogLine) {
+        if self.paused {
+            return;
+        }
         if self.lines.len() >= MAX_LINES {
             self.lines.pop_front();
         }
         self.lines.push_back(line);
     }
 
+    pub fn clear(&mut self) {
+        self.lines.clear();
+    }
+
+    pub fn clear_package_filter(&mut self) {
+        self.filter_package = None;
+        self.filter_pid = None;
+    }
+
     pub fn visible<'a>(&'a self) -> Box<dyn Iterator<Item = &'a LogLine> + 'a> {
-        if self.filter.is_empty() {
-            Box::new(self.lines.iter())
-        } else {
-            let needle = self.filter.to_lowercase();
-            Box::new(self.lines.iter().filter(move |l| {
-                l.tag.to_lowercase().contains(&needle) || l.message.to_lowercase().contains(&needle)
-            }))
-        }
+        let min = self.min_level;
+        let needle = if self.filter.is_empty() { None } else { Some(self.filter.to_lowercase()) };
+        let pid = self.filter_pid;
+        Box::new(self.lines.iter().filter(move |l| {
+            if l.level < min {
+                return false;
+            }
+            if let Some(p) = pid {
+                if l.pid != p {
+                    return false;
+                }
+            }
+            if let Some(n) = &needle {
+                if !l.tag.to_lowercase().contains(n) && !l.message.to_lowercase().contains(n) {
+                    return false;
+                }
+            }
+            true
+        }))
     }
 }

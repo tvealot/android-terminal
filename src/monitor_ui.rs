@@ -1,11 +1,11 @@
-use ratatui::layout::Rect;
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use ratatui::style::{Modifier, Style};
+use ratatui::symbols;
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Paragraph};
+use ratatui::widgets::{Block, Borders, Gauge, Paragraph, Sparkline};
 use ratatui::Frame;
 
 use crate::app::App;
-use crate::panel::{def, PANELS};
 use crate::theme::Theme;
 
 pub fn render(f: &mut Frame, area: Rect, app: &App, theme: &Theme, focused: bool) {
@@ -20,112 +20,103 @@ pub fn render(f: &mut Frame, area: Rect, app: &App, theme: &Theme, focused: bool
     let inner = block.inner(area);
     f.render_widget(block, area);
 
-    let gradle_status = if app.gradle.running {
-        ("running".to_string(), theme.warn)
-    } else if let Some(outcome) = &app.gradle.last_outcome {
-        let color = if outcome == "SUCCESS" {
-            theme.success
+    let Some(latest) = app.monitor.latest() else {
+        let msg = if app.monitor.last_error.is_some() {
+            "monitor error — check adb"
         } else {
-            theme.error
+            "waiting for first sample..."
         };
-        (format!("last build {}", outcome.to_lowercase()), color)
-    } else if let Some(err) = &app.gradle.last_error {
-        (short_text(err, inner.width as usize), theme.error)
-    } else {
-        ("idle".to_string(), theme.muted)
+        f.render_widget(
+            Paragraph::new(Line::from(Span::styled(msg, Style::default().fg(theme.muted)))),
+            inner,
+        );
+        return;
     };
 
-    let mut lines = vec![
-        section_title(" environment ", theme),
-        kv(
-            "adb",
-            status_word(app.adb_available),
-            if app.adb_available {
-                theme.success
-            } else {
-                theme.error
-            },
-            theme,
-        ),
-        kv(
-            "java",
-            status_word(app.jvm_available),
-            if app.jvm_available {
-                theme.success
-            } else {
-                theme.error
-            },
-            theme,
-        ),
-        kv("focus", def(app.focus).name.to_string(), theme.fg, theme),
-        kv(
-            "visible",
-            format!("{}/{} panels", app.visible.len(), PANELS.len()),
-            theme.fg,
-            theme,
-        ),
-        kv(
-            "logcat",
-            format!("{} buffered lines", app.logcat.lines.len()),
-            theme.fg,
-            theme,
-        ),
-        kv("gradle", gradle_status.0, gradle_status.1, theme),
-        Line::from(""),
-        section_title(format!(" devices ({}) ", app.devices.len()), theme),
-    ];
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(1), // battery line
+            Constraint::Length(1), // battery gauge
+            Constraint::Length(1), // mem line
+            Constraint::Length(1), // mem gauge
+            Constraint::Min(1),    // sparkline history
+        ])
+        .split(inner);
 
-    if !app.adb_available {
-        lines.push(message_line("adb not found in PATH", theme.error));
-    } else if app.devices.is_empty() {
-        lines.push(message_line("no connected devices", theme.muted));
+    let battery_label = Paragraph::new(Line::from(vec![
+        Span::styled("battery  ", Style::default().fg(theme.accent)),
+        Span::styled(
+            format!("{}%  ", latest.battery_percent),
+            Style::default().fg(theme.fg).add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            format!("{:.1}°C", latest.battery_temp_c),
+            Style::default().fg(theme.muted),
+        ),
+    ]));
+    f.render_widget(battery_label, chunks[0]);
+
+    let battery_gauge = Gauge::default()
+        .gauge_style(Style::default().fg(battery_color(latest.battery_percent, theme)))
+        .ratio((latest.battery_percent as f64 / 100.0).clamp(0.0, 1.0))
+        .label("");
+    f.render_widget(battery_gauge, chunks[1]);
+
+    let mem_label = Paragraph::new(Line::from(vec![
+        Span::styled("memory   ", Style::default().fg(theme.accent)),
+        Span::styled(
+            format!("{:.1}%  ", latest.mem_used_percent()),
+            Style::default().fg(theme.fg).add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            format!(
+                "{} MB / {} MB",
+                latest.mem_used_kb() / 1024,
+                latest.mem_total_kb / 1024
+            ),
+            Style::default().fg(theme.muted),
+        ),
+    ]));
+    f.render_widget(mem_label, chunks[2]);
+
+    let mem_gauge = Gauge::default()
+        .gauge_style(Style::default().fg(theme.accent))
+        .ratio((latest.mem_used_percent() as f64 / 100.0).clamp(0.0, 1.0))
+        .label("");
+    f.render_widget(mem_gauge, chunks[3]);
+
+    if chunks[4].height >= 2 {
+        let history: Vec<u64> = app
+            .monitor
+            .samples
+            .iter()
+            .map(|s| s.mem_used_percent() as u64)
+            .collect();
+        let spark = Sparkline::default()
+            .block(
+                Block::default()
+                    .borders(Borders::TOP)
+                    .title(Span::styled(
+                        " mem % history ",
+                        Style::default().fg(theme.muted),
+                    ))
+                    .border_style(Style::default().fg(theme.surface)),
+            )
+            .data(&history)
+            .max(100)
+            .bar_set(symbols::bar::NINE_LEVELS)
+            .style(Style::default().fg(theme.accent));
+        f.render_widget(spark, chunks[4]);
+    }
+}
+
+fn battery_color(level: u8, theme: &Theme) -> ratatui::style::Color {
+    if level < 20 {
+        theme.error
+    } else if level < 50 {
+        theme.warn
     } else {
-        for serial in &app.devices {
-            lines.push(Line::from(vec![
-                Span::styled("  device  ", Style::default().fg(theme.muted)),
-                Span::styled(
-                    short_text(serial, inner.width as usize),
-                    Style::default().fg(theme.fg),
-                ),
-            ]));
-        }
+        theme.success
     }
-
-    f.render_widget(Paragraph::new(lines), inner);
-}
-
-fn status_word(ok: bool) -> String {
-    if ok {
-        "ready".to_string()
-    } else {
-        "missing".to_string()
-    }
-}
-
-fn section_title<T: Into<String>>(title: T, theme: &Theme) -> Line<'static> {
-    Line::from(Span::styled(
-        title.into(),
-        Style::default()
-            .fg(theme.accent)
-            .add_modifier(Modifier::BOLD),
-    ))
-}
-
-fn kv(label: &str, value: String, color: Color, theme: &Theme) -> Line<'static> {
-    Line::from(vec![
-        Span::styled(format!("{label:<9}"), Style::default().fg(theme.muted)),
-        Span::raw(" "),
-        Span::styled(value, Style::default().fg(color)),
-    ])
-}
-
-fn message_line(text: &str, color: Color) -> Line<'static> {
-    Line::from(Span::styled(text.to_string(), Style::default().fg(color)))
-}
-
-fn short_text(text: &str, max: usize) -> String {
-    if max <= 3 || text.len() <= max {
-        return text.to_string();
-    }
-    format!("{}...", &text[..max - 3])
 }
