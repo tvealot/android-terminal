@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use crate::adb::devices::DeviceEntry;
 use crate::adb::DeviceHandle;
 use crate::config::{save_state, Config, State};
+use crate::files::FilesState;
 use crate::panel::{def, Feature, PanelId, PANELS};
 
 pub struct App {
@@ -10,6 +11,7 @@ pub struct App {
     pub visible: HashSet<PanelId>,
     pub focus: PanelId,
     pub jvm_available: bool,
+    pub adb_available: bool,
     pub status: Option<StatusFlash>,
     pub show_help: bool,
     pub should_quit: bool,
@@ -18,6 +20,7 @@ pub struct App {
     pub monitor: crate::monitor::MonitorState,
     pub processes: crate::processes::ProcessesState,
     pub issues: crate::issues::IssuesState,
+    pub files: FilesState,
     pub input_mode: InputMode,
     pub device: DeviceHandle,
     pub devices: Vec<DeviceEntry>,
@@ -39,7 +42,13 @@ pub struct StatusFlash {
 }
 
 impl App {
-    pub fn new(config: Config, state: State, jvm_available: bool, device: DeviceHandle) -> Self {
+    pub fn new(
+        config: Config,
+        state: State,
+        jvm_available: bool,
+        adb_available: bool,
+        device: DeviceHandle,
+    ) -> Self {
         let mut visible: HashSet<PanelId> = state.visible.into_iter().collect();
         if !jvm_available {
             visible.remove(&PanelId::Gradle);
@@ -50,11 +59,14 @@ impl App {
             visible.iter().copied().next().unwrap_or(PANELS[0].id)
         };
 
+        let files = FilesState::new(config.gradle.project_dir.clone());
+
         Self {
             config,
             visible,
             focus,
             jvm_available,
+            adb_available,
             status: None,
             show_help: false,
             should_quit: false,
@@ -63,6 +75,7 @@ impl App {
             monitor: crate::monitor::MonitorState::default(),
             processes: crate::processes::ProcessesState::default(),
             issues: crate::issues::IssuesState::default(),
+            files,
             input_mode: InputMode::Normal,
             device,
             devices: Vec::new(),

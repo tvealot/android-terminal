@@ -2,6 +2,8 @@ mod adb;
 mod app;
 mod config;
 mod dispatch;
+mod files;
+mod files_ui;
 mod gradle;
 mod gradle_ui;
 mod issues;
@@ -10,6 +12,7 @@ mod logcat;
 mod logcat_ui;
 mod monitor;
 mod monitor_ui;
+mod network_ui;
 mod panel;
 mod processes;
 mod processes_ui;
@@ -68,13 +71,14 @@ fn main() -> Result<()> {
     let cfg = config::load_config();
     let state = config::load_state();
     let jvm_available = gradle::jvm_available();
+    let adb_available = adb::is_available();
     let device = adb::new_handle();
-    let app = App::new(cfg, state, jvm_available, device.clone());
+    let app = App::new(cfg, state, jvm_available, adb_available, device.clone());
 
     let dispatcher = DispatchContext::new();
     let mut runtime = Runtime { logcat_child: None };
 
-    if adb::is_available() {
+    if adb_available {
         runtime.restart_logcat(&app, &dispatcher);
         monitor::spawn_poller(device.clone(), dispatcher.tx.clone());
         processes::spawn_poller(device.clone(), dispatcher.tx.clone());
@@ -182,6 +186,15 @@ fn handle_key(
                 app.toggle_panel(id);
                 return;
             }
+        }
+    }
+
+    // Files panel owns most keys while focused; Tab still cycles focus
+    // unless the detail pane is open (where it toggles tree ↔ detail).
+    if app.focus == PanelId::Files {
+        let tab_to_global = matches!(key.code, KeyCode::Tab) && !app.files.detail_open;
+        if !tab_to_global && app.files.handle_key(key) {
+            return;
         }
     }
 

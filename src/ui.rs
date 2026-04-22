@@ -5,9 +5,9 @@ use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 use ratatui::Frame;
 
 use crate::app::App;
-use crate::panel::{def, PanelId, PANELS};
+use crate::panel::{PanelId, PANELS};
 use crate::theme::Theme;
-use crate::{gradle_ui, issues_ui, logcat_ui, monitor_ui, processes_ui};
+use crate::{files_ui, gradle_ui, issues_ui, logcat_ui, monitor_ui, network_ui, processes_ui};
 
 pub fn render(f: &mut Frame, app: &App, theme: &Theme) {
     let area = f.area();
@@ -112,27 +112,9 @@ fn render_panel(
         PanelId::Monitor => monitor_ui::render(f, area, app, theme, focused),
         PanelId::Processes => processes_ui::render(f, area, app, theme, focused),
         PanelId::Issues => issues_ui::render(f, area, app, theme, focused),
-        other => render_stub(f, area, other, theme, focused),
+        PanelId::Files => files_ui::render(f, area, app, theme, focused),
+        PanelId::Network => network_ui::render(f, area, app, theme, focused),
     }
-}
-
-fn render_stub(f: &mut Frame, area: Rect, id: PanelId, theme: &Theme, focused: bool) {
-    let border_color = if focused { theme.accent } else { theme.surface };
-    let d = def(id);
-    let block = Block::default()
-        .title(Span::styled(
-            format!(" {} ", d.name),
-            Style::default().fg(theme.fg).add_modifier(Modifier::BOLD),
-        ))
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(border_color));
-    let inner = block.inner(area);
-    f.render_widget(block, area);
-    let msg = Paragraph::new(Line::from(Span::styled(
-        "Coming soon",
-        Style::default().fg(theme.muted),
-    )));
-    f.render_widget(msg, inner);
 }
 
 fn render_footer(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
@@ -243,6 +225,16 @@ fn render_help(f: &mut Frame, area: Rect, theme: &Theme) {
         Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
     )));
     lines.push(Line::from("  r  run default task"));
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        "Files",
+        Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+    )));
+    lines.push(Line::from("  j/k or ↓/↑  navigate tree"));
+    lines.push(Line::from("  Enter/→  expand dir or open file"));
+    lines.push(Line::from("  ←/Backspace  collapse / close detail"));
+    lines.push(Line::from("  Tab  switch tree ↔ detail (when open)"));
+    lines.push(Line::from("  r  refresh"));
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
         "Focus",
