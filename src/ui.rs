@@ -7,7 +7,7 @@ use ratatui::Frame;
 use crate::app::App;
 use crate::panel::{def, PanelId, PANELS};
 use crate::theme::Theme;
-use crate::{gradle_ui, logcat_ui, monitor_ui, processes_ui};
+use crate::{gradle_ui, issues_ui, logcat_ui, monitor_ui, processes_ui};
 
 pub fn render(f: &mut Frame, app: &App, theme: &Theme) {
     let area = f.area();
@@ -111,6 +111,7 @@ fn render_panel(
         PanelId::Gradle => gradle_ui::render(f, area, app, theme, focused),
         PanelId::Monitor => monitor_ui::render(f, area, app, theme, focused),
         PanelId::Processes => processes_ui::render(f, area, app, theme, focused),
+        PanelId::Issues => issues_ui::render(f, area, app, theme, focused),
         other => render_stub(f, area, other, theme, focused),
     }
 }
@@ -163,11 +164,12 @@ fn render_footer(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         Line::from(Span::styled(flash.text.clone(), style))
     } else {
         Line::from(vec![
-            Span::styled("Alt+1..6 toggle  ", Style::default().fg(theme.muted)),
-            Span::styled("letter: focus  ", Style::default().fg(theme.muted)),
+            Span::styled("Alt+1..7 toggle  ", Style::default().fg(theme.muted)),
+            Span::styled("Tab: cycle  ", Style::default().fg(theme.muted)),
             Span::styled("d: device  ", Style::default().fg(theme.muted)),
             Span::styled("/: filter  ", Style::default().fg(theme.muted)),
             Span::styled("P: package  ", Style::default().fg(theme.muted)),
+            Span::styled("Space: pause  ", Style::default().fg(theme.muted)),
             Span::styled("r: gradle  ", Style::default().fg(theme.muted)),
             Span::styled("?: help  ", Style::default().fg(theme.muted)),
             Span::styled("q: quit", Style::default().fg(theme.muted)),
@@ -219,6 +221,15 @@ fn render_help(f: &mut Frame, area: Rect, theme: &Theme) {
     lines.push(Line::from("  L  cycle min level (V→D→I→W→E→V)"));
     lines.push(Line::from("  P  filter by package (pidof)"));
     lines.push(Line::from("  X  clear package filter"));
+    lines.push(Line::from("  Space  pause/resume"));
+    lines.push(Line::from("  C  clear buffer"));
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        "Issues",
+        Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+    )));
+    lines.push(Line::from("  j/k or ↓/↑  navigate"));
+    lines.push(Line::from("  C  clear list"));
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
         "Processes",
@@ -231,6 +242,12 @@ fn render_help(f: &mut Frame, area: Rect, theme: &Theme) {
         Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
     )));
     lines.push(Line::from("  r  run default task"));
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        "Focus",
+        Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+    )));
+    lines.push(Line::from("  Tab / Shift+Tab  cycle focus across visible panels"));
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
         "Device",

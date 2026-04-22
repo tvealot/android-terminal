@@ -4,6 +4,8 @@ mod config;
 mod dispatch;
 mod gradle;
 mod gradle_ui;
+mod issues;
+mod issues_ui;
 mod logcat;
 mod logcat_ui;
 mod monitor;
@@ -119,7 +121,10 @@ fn run_loop(
     loop {
         for ev in dispatcher.drain() {
             match ev {
-                Event::Logcat(line) => app.logcat.push(line),
+                Event::Logcat(line) => {
+                    app.issues.detect(&line);
+                    app.logcat.push(line);
+                }
                 Event::Gradle(ev) => app.gradle.apply(ev),
                 Event::Monitor(sample) => app.monitor.push(sample),
                 Event::Processes(procs) => app.processes.replace(procs),
@@ -218,6 +223,25 @@ fn handle_key(
             app.logcat.clear_package_filter();
             app.flash("logcat package filter cleared".to_string(), false);
         }
+        KeyCode::Char(' ') if app.focus == PanelId::Logcat => {
+            app.logcat.paused = !app.logcat.paused;
+            let msg = if app.logcat.paused { "logcat paused" } else { "logcat resumed" };
+            app.flash(msg.to_string(), false);
+        }
+        KeyCode::Char('C') if app.focus == PanelId::Logcat => {
+            app.logcat.clear();
+            app.flash("logcat cleared".to_string(), false);
+        }
+        KeyCode::Char('C') if app.focus == PanelId::Issues => {
+            app.issues.clear();
+            app.flash("issues cleared".to_string(), false);
+        }
+        KeyCode::Tab => {
+            app.cycle_focus(true);
+        }
+        KeyCode::BackTab => {
+            app.cycle_focus(false);
+        }
         KeyCode::Char('j') | KeyCode::Down if app.focus == PanelId::Processes => {
             if !app.processes.processes.is_empty() {
                 app.processes.selected =
@@ -226,6 +250,12 @@ fn handle_key(
         }
         KeyCode::Char('k') | KeyCode::Up if app.focus == PanelId::Processes => {
             app.processes.selected = app.processes.selected.saturating_sub(1);
+        }
+        KeyCode::Char('j') | KeyCode::Down if app.focus == PanelId::Issues => {
+            app.issues.move_down();
+        }
+        KeyCode::Char('k') | KeyCode::Up if app.focus == PanelId::Issues => {
+            app.issues.move_up();
         }
         KeyCode::Char(c) => {
             if let Some(id) = by_focus_key(c) {

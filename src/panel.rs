@@ -7,6 +7,7 @@ pub enum PanelId {
     Monitor,
     Gradle,
     Processes,
+    Issues,
     Files,
     Network,
 }
@@ -19,6 +20,7 @@ impl PanelId {
             PanelId::Monitor => "monitor",
             PanelId::Gradle => "gradle",
             PanelId::Processes => "processes",
+            PanelId::Issues => "issues",
             PanelId::Files => "files",
             PanelId::Network => "network",
         }
@@ -48,8 +50,9 @@ pub const PANELS: &[PanelDef] = &[
     PanelDef { id: PanelId::Monitor,   name: "monitor",   toggle_key: '2', focus_key: 'm', requires: Feature::None },
     PanelDef { id: PanelId::Gradle,    name: "gradle",    toggle_key: '3', focus_key: 'g', requires: Feature::Jvm  },
     PanelDef { id: PanelId::Processes, name: "processes", toggle_key: '4', focus_key: 'p', requires: Feature::None },
-    PanelDef { id: PanelId::Files,     name: "files",     toggle_key: '5', focus_key: 'f', requires: Feature::None },
-    PanelDef { id: PanelId::Network,   name: "network",   toggle_key: '6', focus_key: 'n', requires: Feature::None },
+    PanelDef { id: PanelId::Issues,    name: "issues",    toggle_key: '5', focus_key: 'i', requires: Feature::None },
+    PanelDef { id: PanelId::Files,     name: "files",     toggle_key: '6', focus_key: 'f', requires: Feature::None },
+    PanelDef { id: PanelId::Network,   name: "network",   toggle_key: '7', focus_key: 'n', requires: Feature::None },
 ];
 
 pub fn by_toggle_key(c: char) -> Option<PanelId> {

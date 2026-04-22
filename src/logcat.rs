@@ -88,6 +88,7 @@ pub struct LogcatState {
     pub min_level: LogLevel,
     pub filter_package: Option<String>,
     pub filter_pid: Option<u32>,
+    pub paused: bool,
 }
 
 impl Default for LogcatState {
@@ -98,16 +99,24 @@ impl Default for LogcatState {
             min_level: LogLevel::Verbose,
             filter_package: None,
             filter_pid: None,
+            paused: false,
         }
     }
 }
 
 impl LogcatState {
     pub fn push(&mut self, line: LogLine) {
+        if self.paused {
+            return;
+        }
         if self.lines.len() >= MAX_LINES {
             self.lines.pop_front();
         }
         self.lines.push_back(line);
+    }
+
+    pub fn clear(&mut self) {
+        self.lines.clear();
     }
 
     pub fn clear_package_filter(&mut self) {

@@ -20,12 +20,13 @@ pub fn render(f: &mut Frame, area: Rect, app: &App, theme: &Theme, focused: bool
         (Some(p), Some(pid)) => format!(" pkg={} pid={}", p, pid),
         _ => String::new(),
     };
+    let paused_part = if app.logcat.paused { " [PAUSED]" } else { "" };
     let filter_hint = if app.input_mode == crate::app::InputMode::LogcatFilter {
-        format!(" logcat{}{} — filter: {}_ ", level_part, pkg_part, app.logcat.filter)
+        format!(" logcat{}{}{} — filter: {}_ ", level_part, pkg_part, paused_part, app.logcat.filter)
     } else if !app.logcat.filter.is_empty() {
-        format!(" logcat{}{} — filter: {} ", level_part, pkg_part, app.logcat.filter)
+        format!(" logcat{}{}{} — filter: {} ", level_part, pkg_part, paused_part, app.logcat.filter)
     } else {
-        format!(" logcat{}{} ", level_part, pkg_part)
+        format!(" logcat{}{}{} ", level_part, pkg_part, paused_part)
     };
     let block = Block::default()
         .title(Span::styled(

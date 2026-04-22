@@ -17,6 +17,7 @@ pub struct App {
     pub gradle: crate::gradle::GradleState,
     pub monitor: crate::monitor::MonitorState,
     pub processes: crate::processes::ProcessesState,
+    pub issues: crate::issues::IssuesState,
     pub input_mode: InputMode,
     pub device: DeviceHandle,
     pub devices: Vec<DeviceEntry>,
@@ -61,6 +62,7 @@ impl App {
             gradle: crate::gradle::GradleState::default(),
             monitor: crate::monitor::MonitorState::default(),
             processes: crate::processes::ProcessesState::default(),
+            issues: crate::issues::IssuesState::default(),
             input_mode: InputMode::Normal,
             device,
             devices: Vec::new(),
@@ -81,6 +83,23 @@ impl App {
 
     pub fn current_device(&self) -> Option<String> {
         self.device.lock().ok().and_then(|g| g.clone())
+    }
+
+    pub fn cycle_focus(&mut self, forward: bool) {
+        let visible = self.visible_ordered();
+        if visible.len() < 2 {
+            return;
+        }
+        let Some(pos) = visible.iter().position(|id| *id == self.focus) else {
+            self.focus = visible[0];
+            return;
+        };
+        let next = if forward {
+            (pos + 1) % visible.len()
+        } else {
+            (pos + visible.len() - 1) % visible.len()
+        };
+        self.focus = visible[next];
     }
 
     pub fn toggle_panel(&mut self, id: PanelId) {
