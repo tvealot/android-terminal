@@ -5,12 +5,20 @@ use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 use ratatui::Frame;
 
 use crate::app::App;
-use crate::issues::IssueKind;
+use crate::issues::{Issue, IssueKind};
 use crate::theme::Theme;
 
 pub fn render(f: &mut Frame, area: Rect, app: &App, theme: &Theme, focused: bool) {
     let border_color = if focused { theme.accent } else { theme.surface };
     let count = app.issues.issues.len();
+
+    if let Some(idx) = app.issues.expanded {
+        if let Some(issue) = app.issues.issues.get(idx) {
+            render_detail(f, area, issue, theme, border_color, focused, app.issues.detail_scroll);
+            return;
+        }
+    }
+
     let block = Block::default()
         .title(Span::styled(
             format!(" issues ({}) ", count),
@@ -48,13 +56,14 @@ pub fn render(f: &mut Frame, area: Rect, app: &App, theme: &Theme, focused: bool
             } else {
                 Style::default().fg(theme.fg)
             };
-            let kind_color = match issue.kind {
-                IssueKind::Crash => theme.error,
-                IssueKind::Anr => theme.warn,
-                IssueKind::Tombstone => theme.error,
-            };
+            let kind_color = kind_color(issue.kind, theme);
             let count_marker = if issue.count > 1 {
                 format!(" ×{}", issue.count)
+            } else {
+                String::new()
+            };
+            let detail_marker = if issue.buffer.len() > 1 {
+                format!(" [{}]", issue.buffer.len())
             } else {
                 String::new()
             };
@@ -70,13 +79,79 @@ pub fn render(f: &mut Frame, area: Rect, app: &App, theme: &Theme, focused: bool
                 Span::styled(format!("pid={:<6} ", issue.pid), Style::default().fg(theme.muted)),
                 Span::styled(format!("{:<18} ", truncate(&issue.tag, 18)), Style::default().fg(theme.accent)),
                 Span::styled(
-                    format!("{}{}", truncate(&issue.excerpt, inner.width as usize / 2), count_marker),
+                    format!("{}{}{}", truncate(&issue.excerpt, inner.width as usize / 2), count_marker, detail_marker),
                     row_style,
                 ),
             ])
         })
         .collect();
     f.render_widget(Paragraph::new(rows).wrap(Wrap { trim: false }), inner);
+}
+
+fn render_detail(
+    f: &mut Frame,
+    area: Rect,
+    issue: &Issue,
+    theme: &Theme,
+    border_color: ratatui::style::Color,
+    focused: bool,
+    scroll: u16,
+) {
+    let kc = kind_color(issue.kind, theme);
+    let title = format!(
+        " {} · pid={} · {} · {} ",
+        issue.kind.label(),
+        issue.pid,
+        issue.tag,
+        issue.timestamp
+    );
+    let hint = if focused {
+        " j/k scroll  Esc/Enter close "
+    } else {
+        " Esc/Enter close "
+    };
+    let block = Block::default()
+        .title(Span::styled(
+            title,
+            Style::default().fg(kc).add_modifier(Modifier::BOLD),
+        ))
+        .title_bottom(Span::styled(
+            hint,
+            Style::default().fg(theme.muted),
+        ))
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(border_color));
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+
+    if issue.buffer.is_empty() {
+        f.render_widget(
+            Paragraph::new(Line::from(Span::styled(
+                "no captured frames",
+                Style::default().fg(theme.muted),
+            ))),
+            inner,
+        );
+        return;
+    }
+
+    let lines: Vec<Line> = issue
+        .buffer
+        .iter()
+        .map(|s| Line::from(Span::styled(s.clone(), Style::default().fg(theme.fg))))
+        .collect();
+    let para = Paragraph::new(lines)
+        .wrap(Wrap { trim: false })
+        .scroll((scroll, 0));
+    f.render_widget(para, inner);
+}
+
+fn kind_color(kind: IssueKind, theme: &Theme) -> ratatui::style::Color {
+    match kind {
+        IssueKind::Crash => theme.error,
+        IssueKind::Anr => theme.warn,
+        IssueKind::Tombstone => theme.error,
+    }
 }
 
 fn truncate(s: &str, max: usize) -> String {

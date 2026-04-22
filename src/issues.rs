@@ -3,6 +3,7 @@ use std::collections::VecDeque;
 use crate::logcat::LogLine;
 
 const MAX_ISSUES: usize = 200;
+const CAPTURE_LINES: usize = 40;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IssueKind {
@@ -29,57 +30,151 @@ pub struct Issue {
     pub tag: String,
     pub excerpt: String,
     pub count: u32,
+    pub buffer: Vec<String>,
+}
+
+struct Capture {
+    issue_idx: usize,
+    pid: u32,
+    remaining: usize,
 }
 
 #[derive(Default)]
 pub struct IssuesState {
     pub issues: VecDeque<Issue>,
     pub selected: usize,
+    pub expanded: Option<usize>,
+    pub detail_scroll: u16,
+    capture: Option<Capture>,
 }
 
 impl IssuesState {
     pub fn detect(&mut self, line: &LogLine) {
-        let Some(kind) = classify(line) else {
+        if let Some(kind) = classify(line) {
+            if let Some(last) = self.issues.back_mut() {
+                if last.kind == kind && last.pid == line.pid && last.tag == line.tag {
+                    last.count += 1;
+                    last.timestamp = line.timestamp.clone();
+                    self.start_capture_for_last(line);
+                    return;
+                }
+            }
+            if self.issues.len() >= MAX_ISSUES {
+                self.issues.pop_front();
+                if self.selected > 0 {
+                    self.selected -= 1;
+                }
+                if let Some(cap) = self.capture.as_mut() {
+                    if cap.issue_idx == 0 {
+                        self.capture = None;
+                    } else {
+                        cap.issue_idx -= 1;
+                    }
+                }
+                if let Some(idx) = self.expanded {
+                    self.expanded = if idx == 0 { None } else { Some(idx - 1) };
+                }
+            }
+            self.issues.push_back(Issue {
+                kind,
+                timestamp: line.timestamp.clone(),
+                pid: line.pid,
+                tag: line.tag.clone(),
+                excerpt: line.message.clone(),
+                count: 1,
+                buffer: Vec::new(),
+            });
+            self.start_capture_for_last(line);
             return;
-        };
-        // Coalesce with the last issue if same kind + pid + tag (crash loops).
-        if let Some(last) = self.issues.back_mut() {
-            if last.kind == kind && last.pid == line.pid && last.tag == line.tag {
-                last.count += 1;
-                last.timestamp = line.timestamp.clone();
-                return;
+        }
+        self.capture_follow(line);
+    }
+
+    fn start_capture_for_last(&mut self, line: &LogLine) {
+        let idx = self.issues.len().saturating_sub(1);
+        if let Some(issue) = self.issues.get_mut(idx) {
+            if issue.buffer.len() < CAPTURE_LINES {
+                issue.buffer.push(format_line(line));
             }
         }
-        if self.issues.len() >= MAX_ISSUES {
-            self.issues.pop_front();
-            if self.selected > 0 {
-                self.selected -= 1;
-            }
-        }
-        self.issues.push_back(Issue {
-            kind,
-            timestamp: line.timestamp.clone(),
+        self.capture = Some(Capture {
+            issue_idx: idx,
             pid: line.pid,
-            tag: line.tag.clone(),
-            excerpt: line.message.clone(),
-            count: 1,
+            remaining: CAPTURE_LINES.saturating_sub(1),
         });
+    }
+
+    fn capture_follow(&mut self, line: &LogLine) {
+        let Some(cap) = self.capture.as_mut() else { return };
+        if line.pid != cap.pid {
+            return;
+        }
+        if let Some(issue) = self.issues.get_mut(cap.issue_idx) {
+            issue.buffer.push(format_line(line));
+        }
+        cap.remaining = cap.remaining.saturating_sub(1);
+        if cap.remaining == 0 {
+            self.capture = None;
+        }
     }
 
     pub fn clear(&mut self) {
         self.issues.clear();
         self.selected = 0;
+        self.expanded = None;
+        self.detail_scroll = 0;
+        self.capture = None;
     }
 
     pub fn move_down(&mut self) {
-        if !self.issues.is_empty() {
+        if self.issues.is_empty() {
+            return;
+        }
+        if let Some(idx) = self.expanded {
+            let max = self
+                .issues
+                .get(idx)
+                .map(|i| i.buffer.len().saturating_sub(1) as u16)
+                .unwrap_or(0);
+            self.detail_scroll = (self.detail_scroll + 1).min(max);
+        } else {
             self.selected = (self.selected + 1).min(self.issues.len() - 1);
         }
     }
 
     pub fn move_up(&mut self) {
-        self.selected = self.selected.saturating_sub(1);
+        if self.expanded.is_some() {
+            self.detail_scroll = self.detail_scroll.saturating_sub(1);
+        } else {
+            self.selected = self.selected.saturating_sub(1);
+        }
     }
+
+    pub fn toggle_expand(&mut self) {
+        if self.expanded.is_some() {
+            self.expanded = None;
+            self.detail_scroll = 0;
+        } else if !self.issues.is_empty() {
+            self.expanded = Some(self.selected);
+            self.detail_scroll = 0;
+        }
+    }
+
+    pub fn close_detail(&mut self) {
+        self.expanded = None;
+        self.detail_scroll = 0;
+    }
+}
+
+fn format_line(line: &LogLine) -> String {
+    format!(
+        "{} {} {} {}: {}",
+        line.timestamp,
+        line.pid,
+        line.level.short(),
+        line.tag,
+        line.message
+    )
 }
 
 fn classify(line: &LogLine) -> Option<IssueKind> {

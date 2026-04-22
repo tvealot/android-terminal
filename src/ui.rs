@@ -180,7 +180,7 @@ fn render_footer(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
 
 fn render_help(f: &mut Frame, area: Rect, theme: &Theme) {
     let width = area.width.min(60);
-    let height = area.height.min(16);
+    let height = area.height.min(32);
     let rect = Rect {
         x: area.x + (area.width - width) / 2,
         y: area.y + (area.height - height) / 2,
@@ -228,7 +228,8 @@ fn render_help(f: &mut Frame, area: Rect, theme: &Theme) {
         "Issues",
         Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
     )));
-    lines.push(Line::from("  j/k or ↓/↑  navigate"));
+    lines.push(Line::from("  j/k or ↓/↑  navigate (or scroll detail)"));
+    lines.push(Line::from("  Enter  open/close stacktrace detail"));
     lines.push(Line::from("  C  clear list"));
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(

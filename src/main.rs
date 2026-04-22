@@ -186,11 +186,14 @@ fn handle_key(
     }
 
     match key.code {
-        KeyCode::Char('q') | KeyCode::Esc if !app.show_help => {
-            app.should_quit = true;
-        }
         KeyCode::Esc if app.show_help => {
             app.show_help = false;
+        }
+        KeyCode::Esc if app.focus == PanelId::Issues && app.issues.expanded.is_some() => {
+            app.issues.close_detail();
+        }
+        KeyCode::Char('q') | KeyCode::Esc => {
+            app.should_quit = true;
         }
         KeyCode::Char('?') => {
             app.show_help = !app.show_help;
@@ -256,6 +259,9 @@ fn handle_key(
         }
         KeyCode::Char('k') | KeyCode::Up if app.focus == PanelId::Issues => {
             app.issues.move_up();
+        }
+        KeyCode::Enter if app.focus == PanelId::Issues => {
+            app.issues.toggle_expand();
         }
         KeyCode::Char(c) => {
             if let Some(id) = by_focus_key(c) {
