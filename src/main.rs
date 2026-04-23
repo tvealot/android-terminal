@@ -18,6 +18,7 @@ mod network_ui;
 mod panel;
 mod processes;
 mod processes_ui;
+mod project_picker;
 mod shell;
 mod shell_ui;
 mod theme;
@@ -149,6 +150,18 @@ fn run_loop(
                         app.devices_selected = app.devices.len() - 1;
                     }
                 }
+                Event::Projects(list) => {
+                    if let Some(picker) = app.project_picker.as_mut() {
+                        picker.entries = list;
+                        picker.loading = false;
+                        picker.selected = 0;
+                        if let Some(cur) = app.config.gradle.project_dir.as_ref() {
+                            if let Some(i) = picker.entries.iter().position(|e| &e.path == cur) {
+                                picker.selected = i;
+                            }
+                        }
+                    }
+                }
                 Event::Status { text, error } => app.flash(text, error),
             }
         }
@@ -199,6 +212,11 @@ fn handle_key(
             return handle_layout_editor_key(app, key);
         }
         InputMode::Normal => {}
+    }
+
+    // Project picker overlay: consumes keys while open.
+    if app.project_picker.is_some() {
+        return handle_project_picker_key(app, key);
     }
 
     // Device selector overlay: consumes keys while open.
@@ -264,6 +282,9 @@ fn handle_key(
         }
         KeyCode::Char('d') => {
             open_device_selector(app);
+        }
+        KeyCode::Char('w') => {
+            open_project_picker(app, dispatcher);
         }
         KeyCode::Char('/') if app.focus == PanelId::Logcat => {
             app.input_mode = InputMode::LogcatFilter;
@@ -667,6 +688,40 @@ fn handle_device_selector(
                 }
             }
             app.device_selector = None;
+        }
+        _ => {}
+    }
+}
+
+fn open_project_picker(app: &mut App, dispatcher: &DispatchContext) {
+    let root = project_picker::default_root();
+    app.project_picker = Some(project_picker::ProjectPicker::new(root.clone()));
+    app.flash(format!("scanning {} for Android projects…", root.display()), false);
+    project_picker::spawn_scan(root, dispatcher.tx.clone());
+}
+
+fn handle_project_picker_key(app: &mut App, key: KeyEvent) {
+    let Some(picker) = app.project_picker.as_mut() else {
+        return;
+    };
+    match key.code {
+        KeyCode::Esc | KeyCode::Char('q') => {
+            app.project_picker = None;
+        }
+        KeyCode::Char('j') | KeyCode::Down => {
+            if !picker.entries.is_empty() {
+                picker.selected = (picker.selected + 1).min(picker.entries.len() - 1);
+            }
+        }
+        KeyCode::Char('k') | KeyCode::Up => {
+            picker.selected = picker.selected.saturating_sub(1);
+        }
+        KeyCode::Enter => {
+            let path = picker.entries.get(picker.selected).map(|e| e.path.clone());
+            app.project_picker = None;
+            if let Some(path) = path {
+                app.apply_project_dir(path);
+            }
         }
         _ => {}
     }

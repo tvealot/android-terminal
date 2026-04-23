@@ -5,6 +5,7 @@ use crate::gradle::{GradleEvent, HostGradleProc};
 use crate::logcat::LogLine;
 use crate::monitor::MonitorSample;
 use crate::processes::ProcessInfo;
+use crate::project_picker::ProjectEntry;
 
 pub enum Event {
     Logcat(LogLine),
@@ -13,6 +14,7 @@ pub enum Event {
     Monitor(MonitorSample),
     Processes(Vec<ProcessInfo>),
     Devices(Vec<DeviceEntry>),
+    Projects(Vec<ProjectEntry>),
     Status { text: String, error: bool },
 }
 

@@ -1,11 +1,13 @@
 use std::collections::HashSet;
+use std::path::PathBuf;
 
 use crate::adb::devices::DeviceEntry;
 use crate::adb::DeviceHandle;
-use crate::config::{save_state, Config, State};
+use crate::config::{save_state, update_project_dir, Config, State};
 use crate::files::FilesState;
 use crate::layout::{LayoutEditor, LayoutGrid};
 use crate::panel::{def, Feature, PanelId, PANELS};
+use crate::project_picker::ProjectPicker;
 
 pub struct App {
     pub config: Config,
@@ -32,6 +34,7 @@ pub struct App {
     pub pending_g: bool,
     pub layout: Option<LayoutGrid>,
     pub layout_editor: Option<LayoutEditor>,
+    pub project_picker: Option<ProjectPicker>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -108,6 +111,16 @@ impl App {
             pending_g: false,
             layout,
             layout_editor: None,
+            project_picker: None,
+        }
+    }
+
+    pub fn apply_project_dir(&mut self, path: PathBuf) {
+        self.config.gradle.project_dir = Some(path.clone());
+        self.files.set_root(Some(path.clone()));
+        match update_project_dir(&path) {
+            Ok(()) => self.flash(format!("project: {}", path.display()), false),
+            Err(e) => self.flash(format!("save config: {}", e), true),
         }
     }
 

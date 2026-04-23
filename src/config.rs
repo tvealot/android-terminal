@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
@@ -85,4 +85,26 @@ pub fn save_state(state: &State) -> std::io::Result<()> {
     let path = dir.join("state.json");
     let text = serde_json::to_string_pretty(state).unwrap();
     fs::write(path, text)
+}
+
+pub fn update_project_dir(project_dir: &Path) -> std::io::Result<()> {
+    let dir = config_dir();
+    fs::create_dir_all(&dir)?;
+    let cfg_path = dir.join("config.toml");
+    let mut doc: toml::Table = match fs::read_to_string(&cfg_path) {
+        Ok(text) => text.parse().unwrap_or_default(),
+        Err(_) => toml::Table::new(),
+    };
+    let gradle = doc
+        .entry("gradle".to_string())
+        .or_insert_with(|| toml::Value::Table(toml::Table::new()));
+    if let toml::Value::Table(g) = gradle {
+        g.insert(
+            "project_dir".to_string(),
+            toml::Value::String(project_dir.display().to_string()),
+        );
+    }
+    let text = toml::to_string_pretty(&doc)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+    fs::write(cfg_path, text)
 }

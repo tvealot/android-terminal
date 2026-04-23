@@ -39,6 +39,10 @@ pub fn render(f: &mut Frame, app: &App, theme: &Theme) {
     if let Some(idx) = app.device_selector {
         render_device_selector(f, area, app, theme, idx);
     }
+
+    if app.project_picker.is_some() {
+        render_project_picker(f, area, app, theme);
+    }
 }
 
 fn render_header(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
@@ -295,6 +299,7 @@ fn render_footer(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
             Span::styled("0 layout  ", Style::default().fg(theme.muted)),
             Span::styled("Tab: cycle  ", Style::default().fg(theme.muted)),
             Span::styled("d: device  ", Style::default().fg(theme.muted)),
+            Span::styled("w: project  ", Style::default().fg(theme.muted)),
             Span::styled("/: filter  ", Style::default().fg(theme.muted)),
             Span::styled("P: package  ", Style::default().fg(theme.muted)),
             Span::styled("Space: pause  ", Style::default().fg(theme.muted)),
@@ -409,6 +414,12 @@ fn render_help(f: &mut Frame, area: Rect, theme: &Theme) {
     lines.push(Line::from("  8 / v  devices panel (j/k + Enter to switch)"));
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
+        "Project",
+        Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+    )));
+    lines.push(Line::from("  w  pick Android project (scans ~/Documents, sorted by mtime)"));
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
         "Layout",
         Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
     )));
@@ -428,6 +439,92 @@ fn shorten_serial(s: &str) -> String {
         s.to_string()
     } else {
         format!("{}…{}", &s[..4], &s[s.len() - 4..])
+    }
+}
+
+fn render_project_picker(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
+    let Some(picker) = &app.project_picker else { return };
+    let width = area.width.min(80);
+    let rows_needed = picker.entries.len().max(1) as u16 + 5;
+    let height = rows_needed.min(area.height);
+    let rect = Rect {
+        x: area.x + (area.width - width) / 2,
+        y: area.y + area.height.saturating_sub(height) / 2,
+        width,
+        height,
+    };
+    f.render_widget(Clear, rect);
+    let title = format!(" select project  ({}) ", picker.root.display());
+    let block = Block::default()
+        .title(Span::styled(
+            title,
+            Style::default().fg(theme.fg).add_modifier(Modifier::BOLD),
+        ))
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(theme.accent));
+    let inner = block.inner(rect);
+    f.render_widget(block, rect);
+
+    let current = app.config.gradle.project_dir.as_ref();
+    let mut lines = Vec::new();
+    if picker.loading {
+        lines.push(Line::from(Span::styled(
+            "  scanning…",
+            Style::default().fg(theme.muted),
+        )));
+    } else if picker.entries.is_empty() {
+        lines.push(Line::from(Span::styled(
+            "  no Android projects (gradlew) found",
+            Style::default().fg(theme.muted),
+        )));
+    } else {
+        let name_w: usize = 28;
+        let date_w: usize = 16;
+        for (i, e) in picker.entries.iter().enumerate() {
+            let is_current = current.map(|c| c == &e.path).unwrap_or(false);
+            let marker = if is_current { "●" } else { " " };
+            let name = e
+                .path
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_else(|| e.display.clone());
+            let row_style = if i == picker.selected {
+                Style::default().fg(theme.bg).bg(theme.accent).add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(theme.fg)
+            };
+            let path_style = if i == picker.selected {
+                Style::default().fg(theme.bg).bg(theme.accent)
+            } else {
+                Style::default().fg(theme.muted)
+            };
+            let date_style = if i == picker.selected {
+                Style::default().fg(theme.bg).bg(theme.accent)
+            } else {
+                Style::default().fg(theme.warn)
+            };
+            lines.push(Line::from(vec![
+                Span::styled(format!(" {} ", marker), row_style),
+                Span::styled(format!("{:<width$}", truncate(&name, name_w), width = name_w), row_style),
+                Span::styled(format!(" {:<width$} ", e.modified_label(), width = date_w), date_style),
+                Span::styled(truncate(&e.display, 100), path_style),
+            ]));
+        }
+    }
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        "  Enter: select   j/k: move   Esc: close",
+        Style::default().fg(theme.muted),
+    )));
+    f.render_widget(Paragraph::new(lines), inner);
+}
+
+fn truncate(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        s.to_string()
+    } else {
+        let head: String = s.chars().take(max.saturating_sub(1)).collect();
+        format!("{}…", head)
     }
 }
 
