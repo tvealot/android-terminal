@@ -3,6 +3,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+use crate::layout::LayoutGrid;
 use crate::panel::{PanelId, PANELS};
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -42,6 +43,8 @@ fn default_theme() -> String {
 pub struct State {
     pub visible: Vec<PanelId>,
     pub focus: PanelId,
+    #[serde(default)]
+    pub layout: Option<LayoutGrid>,
 }
 
 impl Default for State {
@@ -49,6 +52,7 @@ impl Default for State {
         Self {
             visible: PANELS.iter().map(|p| p.id).collect(),
             focus: PANELS[0].id,
+            layout: None,
         }
     }
 }

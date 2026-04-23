@@ -9,6 +9,7 @@ mod gradle;
 mod gradle_ui;
 mod issues;
 mod issues_ui;
+mod layout;
 mod logcat;
 mod logcat_ui;
 mod monitor;
@@ -40,7 +41,7 @@ use ratatui::Terminal;
 
 use crate::app::{App, InputMode};
 use crate::dispatch::{DispatchContext, Event};
-use crate::panel::{by_focus_key, by_toggle_key, PanelId};
+use crate::panel::{by_focus_key, by_toggle_key, PanelId, PANELS};
 
 struct Runtime {
     logcat_child: Option<Child>,
@@ -189,6 +190,9 @@ fn handle_key(
         InputMode::LogcatPackage => {
             return handle_package_key(app, key, dispatcher);
         }
+        InputMode::LayoutEdit => {
+            return handle_layout_editor_key(app, key);
+        }
         InputMode::Normal => {}
     }
 
@@ -197,8 +201,12 @@ fn handle_key(
         return handle_device_selector(app, key, idx, dispatcher, runtime);
     }
 
-    if key.modifiers.contains(KeyModifiers::ALT) {
-        if let KeyCode::Char(c) = key.code {
+    if let KeyCode::Char(c) = key.code {
+        if c == '0' {
+            app.open_layout_editor();
+            return;
+        }
+        if c.is_ascii_digit() {
             if let Some(id) = by_toggle_key(c) {
                 app.toggle_panel(id);
                 return;
@@ -357,6 +365,43 @@ fn handle_key(
         KeyCode::Char(c) => {
             if let Some(id) = by_focus_key(c) {
                 app.focus_panel(id);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn handle_layout_editor_key(app: &mut App, key: KeyEvent) {
+    match key.code {
+        KeyCode::Esc => {
+            app.close_layout_editor(false);
+            return;
+        }
+        KeyCode::Enter => {
+            app.close_layout_editor(true);
+            return;
+        }
+        _ => {}
+    }
+    let Some(editor) = app.layout_editor.as_mut() else {
+        app.input_mode = InputMode::Normal;
+        return;
+    };
+    match key.code {
+        KeyCode::Char('h') | KeyCode::Left => editor.move_cursor(-1, 0),
+        KeyCode::Char('l') | KeyCode::Right => editor.move_cursor(1, 0),
+        KeyCode::Char('k') | KeyCode::Up => editor.move_cursor(0, -1),
+        KeyCode::Char('j') | KeyCode::Down => editor.move_cursor(0, 1),
+        KeyCode::Char('v') | KeyCode::Char(' ') => editor.toggle_selection(),
+        KeyCode::Char('x') | KeyCode::Char('d') => editor.delete_at_cursor(),
+        KeyCode::Char('c') => editor.clear(),
+        KeyCode::Char('[') => editor.resize_cols(-1),
+        KeyCode::Char(']') => editor.resize_cols(1),
+        KeyCode::Char('-') => editor.resize_rows(-1),
+        KeyCode::Char('=') | KeyCode::Char('+') => editor.resize_rows(1),
+        KeyCode::Char(c) if c.is_ascii_digit() => {
+            if let Some(panel) = PANELS.iter().find(|p| p.toggle_key == c) {
+                editor.assign(panel.id);
             }
         }
         _ => {}

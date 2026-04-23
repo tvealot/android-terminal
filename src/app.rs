@@ -4,6 +4,7 @@ use crate::adb::devices::DeviceEntry;
 use crate::adb::DeviceHandle;
 use crate::config::{save_state, Config, State};
 use crate::files::FilesState;
+use crate::layout::{LayoutEditor, LayoutGrid};
 use crate::panel::{def, Feature, PanelId, PANELS};
 
 pub struct App {
@@ -29,6 +30,8 @@ pub struct App {
     pub device_selector: Option<usize>,
     pub package_input: String,
     pub pending_g: bool,
+    pub layout: Option<LayoutGrid>,
+    pub layout_editor: Option<LayoutEditor>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -36,6 +39,7 @@ pub enum InputMode {
     Normal,
     LogcatFilter,
     LogcatPackage,
+    LayoutEdit,
 }
 
 pub struct StatusFlash {
@@ -56,10 +60,25 @@ impl App {
         if !jvm_available {
             visible.remove(&PanelId::Gradle);
         }
-        let focus = if visible.contains(&state.focus) {
+        let layout = state.layout.and_then(|g| {
+            if g.cells.is_empty() {
+                None
+            } else {
+                Some(g)
+            }
+        });
+        let focus_candidates: Vec<PanelId> = if let Some(g) = &layout {
+            g.visible_panels()
+        } else {
+            visible.iter().copied().collect()
+        };
+        let focus = if focus_candidates.contains(&state.focus) {
             state.focus
         } else {
-            visible.iter().copied().next().unwrap_or(PANELS[0].id)
+            focus_candidates
+                .into_iter()
+                .next()
+                .unwrap_or(PANELS[0].id)
         };
 
         let files = FilesState::new(config.gradle.project_dir.clone());
@@ -87,6 +106,8 @@ impl App {
             device_selector: None,
             package_input: String::new(),
             pending_g: false,
+            layout,
+            layout_editor: None,
         }
     }
 
@@ -148,7 +169,7 @@ impl App {
             self.persist();
         } else {
             self.flash(
-                format!("panel '{}' is hidden (Alt+{} to show)", def(id).name, def(id).toggle_key),
+                format!("panel '{}' is hidden ({} to show)", def(id).name, def(id).toggle_key),
                 false,
             );
         }
@@ -171,6 +192,9 @@ impl App {
     }
 
     pub fn visible_ordered(&self) -> Vec<PanelId> {
+        if let Some(g) = &self.layout {
+            return g.visible_panels();
+        }
         PANELS
             .iter()
             .filter(|p| self.visible.contains(&p.id))
@@ -178,10 +202,54 @@ impl App {
             .collect()
     }
 
+    pub fn open_layout_editor(&mut self) {
+        let grid = self.layout.clone().unwrap_or_default();
+        self.layout_editor = Some(LayoutEditor::new(grid));
+        self.input_mode = InputMode::LayoutEdit;
+    }
+
+    pub fn close_layout_editor(&mut self, save: bool) {
+        let editor = match self.layout_editor.take() {
+            Some(e) => e,
+            None => {
+                self.input_mode = InputMode::Normal;
+                return;
+            }
+        };
+        if save {
+            if editor.grid.cells.is_empty() {
+                self.layout = None;
+            } else {
+                let grid = editor.grid;
+                for p in grid.visible_panels() {
+                    self.visible.insert(p);
+                }
+                if !grid.visible_panels().contains(&self.focus) {
+                    if let Some(first) = grid.visible_panels().into_iter().next() {
+                        self.focus = first;
+                    }
+                }
+                self.layout = Some(grid);
+            }
+            self.persist();
+            self.flash("layout saved".to_string(), false);
+        }
+        self.input_mode = InputMode::Normal;
+    }
+
     fn persist(&self) {
         let state = State {
-            visible: self.visible_ordered(),
+            visible: if self.layout.is_some() {
+                PANELS
+                    .iter()
+                    .filter(|p| self.visible.contains(&p.id))
+                    .map(|p| p.id)
+                    .collect()
+            } else {
+                self.visible_ordered()
+            },
             focus: self.focus,
+            layout: self.layout.clone(),
         };
         let _ = save_state(&state);
     }

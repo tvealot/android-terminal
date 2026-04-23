@@ -5,7 +5,8 @@ use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 use ratatui::Frame;
 
 use crate::app::App;
-use crate::panel::{PanelId, PANELS};
+use crate::layout::{cell_rect, LayoutEditor, LayoutGrid};
+use crate::panel::{def, PanelId, PANELS};
 use crate::theme::Theme;
 use crate::{
     devices_ui, files_ui, gradle_ui, issues_ui, logcat_ui, monitor_ui, network_ui, processes_ui,
@@ -24,7 +25,11 @@ pub fn render(f: &mut Frame, app: &App, theme: &Theme) {
         .split(area);
 
     render_header(f, vchunks[0], app, theme);
-    render_body(f, vchunks[1], app, theme);
+    if let Some(editor) = &app.layout_editor {
+        render_layout_editor(f, vchunks[1], editor, theme);
+    } else {
+        render_body(f, vchunks[1], app, theme);
+    }
     render_footer(f, vchunks[2], app, theme);
 
     if app.show_help {
@@ -73,6 +78,11 @@ fn render_header(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
 }
 
 fn render_body(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
+    if let Some(grid) = &app.layout {
+        render_grid_body(f, area, grid, app, theme);
+        return;
+    }
+
     let visible = app.visible_ordered();
     if visible.is_empty() {
         let help = Paragraph::new(vec![
@@ -81,7 +91,7 @@ fn render_body(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
                 Style::default().fg(theme.warn).add_modifier(Modifier::BOLD),
             )),
             Line::from(""),
-            Line::from("Press Alt+1..9 to toggle panels, ? for help, q to quit."),
+            Line::from("Press 1..9 to toggle panels, 0 for layout editor, ? for help, q to quit."),
         ])
         .wrap(Wrap { trim: false });
         f.render_widget(help, area);
@@ -90,15 +100,145 @@ fn render_body(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
 
     let count = visible.len() as u32;
     let constraints: Vec<Constraint> = visible.iter().map(|_| Constraint::Ratio(1, count)).collect();
-    let chunks = Layout::default()
+    let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints(constraints)
         .split(area);
 
     for (i, id) in visible.iter().enumerate() {
         let focused = app.focus == *id;
-        render_panel(f, chunks[i], *id, app, theme, focused);
+        let row = rows[i];
+        if *id == PanelId::Monitor {
+            let split = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([Constraint::Ratio(2, 3), Constraint::Ratio(1, 3)])
+                .split(row);
+            render_panel(f, split[1], *id, app, theme, focused);
+        } else {
+            render_panel(f, row, *id, app, theme, focused);
+        }
     }
+}
+
+fn render_grid_body(f: &mut Frame, area: Rect, grid: &LayoutGrid, app: &App, theme: &Theme) {
+    if grid.cells.is_empty() || grid.cols == 0 || grid.rows == 0 {
+        return;
+    }
+    for cell in &grid.cells {
+        let rect = cell_rect(area, grid, cell.x, cell.y, cell.w, cell.h);
+        if rect.width == 0 || rect.height == 0 {
+            continue;
+        }
+        let focused = app.focus == cell.panel;
+        render_panel(f, rect, cell.panel, app, theme, focused);
+    }
+}
+
+fn render_layout_editor(f: &mut Frame, area: Rect, editor: &LayoutEditor, theme: &Theme) {
+    let outer = Block::default()
+        .title(Span::styled(
+            " layout editor ",
+            Style::default().fg(theme.fg).add_modifier(Modifier::BOLD),
+        ))
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(theme.accent));
+    let inner = outer.inner(area);
+    f.render_widget(outer, area);
+
+    let help_h: u16 = 6;
+    let grid_area = Rect {
+        x: inner.x,
+        y: inner.y,
+        width: inner.width,
+        height: inner.height.saturating_sub(help_h),
+    };
+    let help_area = Rect {
+        x: inner.x,
+        y: inner.y + grid_area.height,
+        width: inner.width,
+        height: inner.height.saturating_sub(grid_area.height),
+    };
+
+    let grid = &editor.grid;
+    if grid.cols > 0 && grid.rows > 0 && grid_area.width > 0 && grid_area.height > 0 {
+        for cell in &grid.cells {
+            let r = cell_rect(grid_area, grid, cell.x, cell.y, cell.w, cell.h);
+            if r.width == 0 || r.height == 0 {
+                continue;
+            }
+            let name = def(cell.panel).name;
+            let block = Block::default()
+                .title(Span::styled(
+                    format!(" {} ", name),
+                    Style::default().fg(theme.fg).add_modifier(Modifier::BOLD),
+                ))
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(theme.muted));
+            f.render_widget(block, r);
+        }
+
+        let (sx, sy, sw, sh) = editor.selection_rect();
+        let sel = cell_rect(grid_area, grid, sx, sy, sw, sh);
+        if sel.width > 0 && sel.height > 0 {
+            let sel_style = if editor.sel_start.is_some() {
+                Style::default().fg(theme.warn).add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(theme.accent).add_modifier(Modifier::BOLD)
+            };
+            let sel_block = Block::default()
+                .borders(Borders::ALL)
+                .border_style(sel_style);
+            f.render_widget(Clear, sel);
+            f.render_widget(sel_block, sel);
+        }
+    }
+
+    let mut lines: Vec<Line> = Vec::new();
+    lines.push(Line::from(vec![
+        Span::styled(
+            format!("grid {}x{}  ", grid.cols, grid.rows),
+            Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            format!("cur ({},{})  ", editor.cursor_x, editor.cursor_y),
+            Style::default().fg(theme.fg),
+        ),
+        Span::styled(
+            format!("cells {}", grid.cells.len()),
+            Style::default().fg(theme.muted),
+        ),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled("h/j/k/l ", Style::default().fg(theme.warn)),
+        Span::raw("move  "),
+        Span::styled("v ", Style::default().fg(theme.warn)),
+        Span::raw("toggle selection  "),
+        Span::styled("1..9 ", Style::default().fg(theme.warn)),
+        Span::raw("assign panel"),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled("x ", Style::default().fg(theme.warn)),
+        Span::raw("delete cell  "),
+        Span::styled("c ", Style::default().fg(theme.warn)),
+        Span::raw("clear all  "),
+        Span::styled("[ ] ", Style::default().fg(theme.warn)),
+        Span::raw("cols -/+  "),
+        Span::styled("- = ", Style::default().fg(theme.warn)),
+        Span::raw("rows -/+"),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled("Enter ", Style::default().fg(theme.success)),
+        Span::raw("save  "),
+        Span::styled("Esc ", Style::default().fg(theme.error)),
+        Span::raw("cancel"),
+    ]));
+    if let Some(m) = &editor.message {
+        lines.push(Line::from(Span::styled(
+            m.clone(),
+            Style::default().fg(theme.success),
+        )));
+    }
+    f.render_widget(Paragraph::new(lines), help_area);
 }
 
 fn render_panel(
@@ -151,7 +291,8 @@ fn render_footer(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         Line::from(Span::styled(flash.text.clone(), style))
     } else {
         Line::from(vec![
-            Span::styled("Alt+1..9 toggle  ", Style::default().fg(theme.muted)),
+            Span::styled("1..9 toggle  ", Style::default().fg(theme.muted)),
+            Span::styled("0 layout  ", Style::default().fg(theme.muted)),
             Span::styled("Tab: cycle  ", Style::default().fg(theme.muted)),
             Span::styled("d: device  ", Style::default().fg(theme.muted)),
             Span::styled("/: filter  ", Style::default().fg(theme.muted)),
@@ -193,7 +334,7 @@ fn render_help(f: &mut Frame, area: Rect, theme: &Theme) {
     ];
     for p in PANELS {
         lines.push(Line::from(vec![
-            Span::styled(format!("  Alt+{}", p.toggle_key), Style::default().fg(theme.warn)),
+            Span::styled(format!("  {}", p.toggle_key), Style::default().fg(theme.warn)),
             Span::raw("  toggle  "),
             Span::styled(format!("{}", p.focus_key), Style::default().fg(theme.warn)),
             Span::raw(format!("  focus {}", p.name)),
@@ -248,7 +389,7 @@ fn render_help(f: &mut Frame, area: Rect, theme: &Theme) {
         "Shell",
         Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
     )));
-    lines.push(Line::from("  s / Alt+9  focus → auto `adb shell`"));
+    lines.push(Line::from("  s / 9  focus → auto `adb shell`"));
     lines.push(Line::from("  Ctrl+\\  defocus (cycle to next panel)"));
     lines.push(Line::from("  All keys route to the PTY while focused"));
     lines.push(Line::from(""));
@@ -263,7 +404,16 @@ fn render_help(f: &mut Frame, area: Rect, theme: &Theme) {
         Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
     )));
     lines.push(Line::from("  d  open device selector"));
-    lines.push(Line::from("  Alt+8 / v  devices panel (j/k + Enter to switch)"));
+    lines.push(Line::from("  8 / v  devices panel (j/k + Enter to switch)"));
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        "Layout",
+        Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+    )));
+    lines.push(Line::from("  0  open grid layout editor"));
+    lines.push(Line::from("  In editor: h/j/k/l move  v select  1..9 assign"));
+    lines.push(Line::from("  x delete  c clear  [ ] cols  - = rows"));
+    lines.push(Line::from("  Enter save  Esc cancel"));
     lines.push(Line::from(""));
     lines.push(Line::from("  ?  toggle this help"));
     lines.push(Line::from("  q  quit"));

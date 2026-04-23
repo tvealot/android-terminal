@@ -36,7 +36,7 @@ pub fn render(f: &mut Frame, area: Rect, app: &App, theme: &Theme, focused: bool
         let hint = if let Some(e) = &app.shell.last_error {
             format!(" {}\n Press `s` to restart.", e)
         } else {
-            " Waiting to start. Focus the panel (`s` or Alt+9).".to_string()
+            " Waiting to start. Focus the panel (`s` or 9).".to_string()
         };
         let p = Paragraph::new(hint).style(Style::default().fg(theme.muted));
         f.render_widget(p, inner);
