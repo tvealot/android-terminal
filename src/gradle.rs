@@ -208,6 +208,12 @@ fn classify_gradle(cmd: &str) -> &'static str {
         "wrapper"
     } else if cmd.contains("gradle-agent.jar") || cmd.contains("sh.droidscope.agent") {
         "agent"
+    } else if cmd.contains("KotlinCompileDaemon")
+        || cmd.contains("org.jetbrains.kotlin.daemon")
+    {
+        "kotlin"
+    } else if cmd.contains("com.android.build") || cmd.contains("aapt2") {
+        "android"
     } else {
         ""
     }
