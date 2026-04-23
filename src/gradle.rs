@@ -52,13 +52,6 @@ pub struct ActiveTask {
 }
 
 #[derive(Debug, Clone)]
-pub struct CompletedTask {
-    pub path: String,
-    pub outcome: String,
-    pub duration_ms: u64,
-}
-
-#[derive(Debug, Clone)]
 pub struct HostGradleProc {
     pub pid: u32,
     pub cpu: f32,
@@ -70,7 +63,6 @@ pub struct HostGradleProc {
 pub struct GradleState {
     pub running: bool,
     pub active: HashMap<String, ActiveTask>,
-    pub completed: Vec<CompletedTask>,
     pub last_error: Option<String>,
     pub last_outcome: Option<String>,
     pub host_procs: Vec<HostGradleProc>,
@@ -88,22 +80,8 @@ impl GradleState {
                     },
                 );
             }
-            GradleEvent::TaskFinish {
-                path,
-                outcome,
-                duration_ms,
-                ..
-            } => {
+            GradleEvent::TaskFinish { path, .. } => {
                 self.active.remove(&path);
-                self.completed.push(CompletedTask {
-                    path,
-                    outcome,
-                    duration_ms,
-                });
-                if self.completed.len() > 200 {
-                    let excess = self.completed.len() - 200;
-                    self.completed.drain(..excess);
-                }
             }
             GradleEvent::BuildFinish { outcome, .. } => {
                 self.running = false;
