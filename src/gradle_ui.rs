@@ -28,13 +28,53 @@ pub fn render(f: &mut Frame, area: Rect, app: &App, theme: &Theme, focused: bool
         return;
     }
 
+    let host_h = (app.gradle.host_procs.len() as u16 + 1).min(6);
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(8), Constraint::Min(3)])
+        .constraints([
+            Constraint::Length(8),
+            Constraint::Length(host_h.max(1)),
+            Constraint::Min(3),
+        ])
         .split(inner);
 
     render_active(f, chunks[0], app, theme);
-    render_history(f, chunks[1], app, theme);
+    render_host(f, chunks[1], app, theme);
+    render_history(f, chunks[2], app, theme);
+}
+
+fn render_host(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
+    let title = Line::from(Span::styled(
+        format!(" host gradle ({}) ", app.gradle.host_procs.len()),
+        Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+    ));
+    let mut lines: Vec<Line> = vec![title];
+    if app.gradle.host_procs.is_empty() {
+        lines.push(Line::from(Span::styled(
+            "no external gradle processes",
+            Style::default().fg(theme.muted),
+        )));
+    } else {
+        for p in &app.gradle.host_procs {
+            let mb = p.rss_kb as f64 / 1024.0;
+            lines.push(Line::from(vec![
+                Span::styled(
+                    format!("{:<8} ", p.kind),
+                    Style::default().fg(theme.warn).add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(format!("pid {:<6} ", p.pid), Style::default().fg(theme.fg)),
+                Span::styled(
+                    format!("cpu {:>5.1}%  ", p.cpu),
+                    Style::default().fg(theme.muted),
+                ),
+                Span::styled(
+                    format!("rss {:>6.0} MB", mb),
+                    Style::default().fg(theme.muted),
+                ),
+            ]));
+        }
+    }
+    f.render_widget(Paragraph::new(lines), area);
 }
 
 fn render_active(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {

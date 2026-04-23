@@ -93,6 +93,7 @@ fn main() -> Result<()> {
             error: true,
         });
     }
+    gradle::spawn_host_poller(dispatcher.tx.clone());
 
     let mut terminal = setup_terminal()?;
     let result = run_loop(&mut terminal, app, dispatcher, runtime);
@@ -134,6 +135,7 @@ fn run_loop(
                     app.logcat.push(line);
                 }
                 Event::Gradle(ev) => app.gradle.apply(ev),
+                Event::HostGradle(list) => app.gradle.host_procs = list,
                 Event::Monitor(sample) => app.monitor.push(sample),
                 Event::Processes(procs) => app.processes.replace(procs),
                 Event::Devices(list) => {

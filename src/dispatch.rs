@@ -1,7 +1,7 @@
 use std::sync::mpsc::{channel, Receiver, Sender};
 
 use crate::adb::devices::DeviceEntry;
-use crate::gradle::GradleEvent;
+use crate::gradle::{GradleEvent, HostGradleProc};
 use crate::logcat::LogLine;
 use crate::monitor::MonitorSample;
 use crate::processes::ProcessInfo;
@@ -9,6 +9,7 @@ use crate::processes::ProcessInfo;
 pub enum Event {
     Logcat(LogLine),
     Gradle(GradleEvent),
+    HostGradle(Vec<HostGradleProc>),
     Monitor(MonitorSample),
     Processes(Vec<ProcessInfo>),
     Devices(Vec<DeviceEntry>),

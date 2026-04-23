@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::mpsc::Sender;
 use std::thread;
+use std::time::Duration;
 
 use serde::Deserialize;
 
@@ -57,6 +58,14 @@ pub struct CompletedTask {
     pub duration_ms: u64,
 }
 
+#[derive(Debug, Clone)]
+pub struct HostGradleProc {
+    pub pid: u32,
+    pub cpu: f32,
+    pub rss_kb: u64,
+    pub kind: &'static str,
+}
+
 #[derive(Default)]
 pub struct GradleState {
     pub running: bool,
@@ -64,6 +73,7 @@ pub struct GradleState {
     pub completed: Vec<CompletedTask>,
     pub last_error: Option<String>,
     pub last_outcome: Option<String>,
+    pub host_procs: Vec<HostGradleProc>,
 }
 
 impl GradleState {
@@ -154,6 +164,71 @@ pub fn spawn(jar: &Path, project_dir: &Path, task: &str, tx: Sender<Event>) -> s
         let _ = child.wait();
     });
     Ok(())
+}
+
+pub fn spawn_host_poller(tx: Sender<Event>) {
+    thread::spawn(move || loop {
+        let procs = scan_host_gradle();
+        if tx.send(Event::HostGradle(procs)).is_err() {
+            break;
+        }
+        thread::sleep(Duration::from_secs(2));
+    });
+}
+
+fn scan_host_gradle() -> Vec<HostGradleProc> {
+    let output = Command::new("ps")
+        .args(["-axo", "pid=,pcpu=,rss=,command="])
+        .output();
+    let Ok(output) = output else {
+        return Vec::new();
+    };
+    if !output.status.success() {
+        return Vec::new();
+    }
+    let text = String::from_utf8_lossy(&output.stdout);
+    let mut out = Vec::new();
+    for line in text.lines() {
+        let trimmed = line.trim_start();
+        let mut it = trimmed.splitn(4, char::is_whitespace).filter(|s| !s.is_empty());
+        let Some(pid_s) = it.next() else { continue };
+        let Some(cpu_s) = it.next() else { continue };
+        let Some(rss_s) = it.next() else { continue };
+        let Some(cmd) = it.next() else { continue };
+        let kind = classify_gradle(cmd);
+        if kind.is_empty() {
+            continue;
+        }
+        let Ok(pid) = pid_s.parse::<u32>() else { continue };
+        let cpu = cpu_s.parse::<f32>().unwrap_or(0.0);
+        let rss_kb = rss_s.parse::<u64>().unwrap_or(0);
+        out.push(HostGradleProc {
+            pid,
+            cpu,
+            rss_kb,
+            kind,
+        });
+    }
+    out
+}
+
+fn classify_gradle(cmd: &str) -> &'static str {
+    if cmd.contains("GradleDaemon") || cmd.contains("org.gradle.launcher.daemon") {
+        "daemon"
+    } else if cmd.contains("org.gradle.launcher.GradleMain")
+        || cmd.contains("org.gradle.launcher.Main")
+    {
+        "launcher"
+    } else if cmd.contains("/gradlew ")
+        || cmd.ends_with("/gradlew")
+        || cmd.contains("gradle-wrapper.jar")
+    {
+        "wrapper"
+    } else if cmd.contains("gradle-agent.jar") || cmd.contains("sh.droidscope.agent") {
+        "agent"
+    } else {
+        ""
+    }
 }
 
 pub fn default_jar_path() -> PathBuf {
