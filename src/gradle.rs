@@ -190,12 +190,16 @@ fn scan_host_gradle() -> Vec<HostGradleProc> {
     let mut out = Vec::new();
     for line in text.lines() {
         let trimmed = line.trim_start();
-        let mut it = trimmed.splitn(4, char::is_whitespace).filter(|s| !s.is_empty());
+        let mut it = trimmed.split_whitespace();
         let Some(pid_s) = it.next() else { continue };
         let Some(cpu_s) = it.next() else { continue };
         let Some(rss_s) = it.next() else { continue };
-        let Some(cmd) = it.next() else { continue };
-        let kind = classify_gradle(cmd);
+        let cmd_tokens: Vec<&str> = it.collect();
+        if cmd_tokens.is_empty() {
+            continue;
+        }
+        let cmd = cmd_tokens.join(" ");
+        let kind = classify_gradle(&cmd);
         if kind.is_empty() {
             continue;
         }
