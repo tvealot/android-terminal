@@ -21,11 +21,14 @@ pub struct App {
     pub processes: crate::processes::ProcessesState,
     pub issues: crate::issues::IssuesState,
     pub files: FilesState,
+    pub shell: crate::shell::ShellState,
     pub input_mode: InputMode,
     pub device: DeviceHandle,
     pub devices: Vec<DeviceEntry>,
+    pub devices_selected: usize,
     pub device_selector: Option<usize>,
     pub package_input: String,
+    pub pending_g: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -76,11 +79,14 @@ impl App {
             processes: crate::processes::ProcessesState::default(),
             issues: crate::issues::IssuesState::default(),
             files,
+            shell: crate::shell::ShellState::default(),
             input_mode: InputMode::Normal,
             device,
             devices: Vec::new(),
+            devices_selected: 0,
             device_selector: None,
             package_input: String::new(),
+            pending_g: false,
         }
     }
 

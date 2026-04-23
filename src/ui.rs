@@ -7,7 +7,10 @@ use ratatui::Frame;
 use crate::app::App;
 use crate::panel::{PanelId, PANELS};
 use crate::theme::Theme;
-use crate::{files_ui, gradle_ui, issues_ui, logcat_ui, monitor_ui, network_ui, processes_ui};
+use crate::{
+    devices_ui, files_ui, gradle_ui, issues_ui, logcat_ui, monitor_ui, network_ui, processes_ui,
+    shell_ui,
+};
 
 pub fn render(f: &mut Frame, app: &App, theme: &Theme) {
     let area = f.area();
@@ -114,6 +117,8 @@ fn render_panel(
         PanelId::Issues => issues_ui::render(f, area, app, theme, focused),
         PanelId::Files => files_ui::render(f, area, app, theme, focused),
         PanelId::Network => network_ui::render(f, area, app, theme, focused),
+        PanelId::Devices => devices_ui::render(f, area, app, theme, focused),
+        PanelId::Shell => shell_ui::render(f, area, app, theme, focused),
     }
 }
 
@@ -146,7 +151,7 @@ fn render_footer(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         Line::from(Span::styled(flash.text.clone(), style))
     } else {
         Line::from(vec![
-            Span::styled("Alt+1..7 toggle  ", Style::default().fg(theme.muted)),
+            Span::styled("Alt+1..9 toggle  ", Style::default().fg(theme.muted)),
             Span::styled("Tab: cycle  ", Style::default().fg(theme.muted)),
             Span::styled("d: device  ", Style::default().fg(theme.muted)),
             Span::styled("/: filter  ", Style::default().fg(theme.muted)),
@@ -162,7 +167,7 @@ fn render_footer(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
 
 fn render_help(f: &mut Frame, area: Rect, theme: &Theme) {
     let width = area.width.min(60);
-    let height = area.height.min(32);
+    let height = area.height.min(44);
     let rect = Rect {
         x: area.x + (area.width - width) / 2,
         y: area.y + (area.height - height) / 2,
@@ -200,11 +205,14 @@ fn render_help(f: &mut Frame, area: Rect, theme: &Theme) {
         Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
     )));
     lines.push(Line::from("  /  enter filter mode (tag/message substring)"));
+    lines.push(Line::from("  R  toggle regex filter"));
     lines.push(Line::from("  L  cycle min level (V→D→I→W→E→V)"));
     lines.push(Line::from("  P  filter by package (pidof)"));
     lines.push(Line::from("  X  clear package filter"));
     lines.push(Line::from("  Space  pause/resume"));
     lines.push(Line::from("  C  clear buffer"));
+    lines.push(Line::from("  j/k ↑/↓  scroll 1 line   PgUp/PgDn  20"));
+    lines.push(Line::from("  gg / G  jump top / bottom (follow tail)"));
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
         "Issues",
@@ -237,6 +245,14 @@ fn render_help(f: &mut Frame, area: Rect, theme: &Theme) {
     lines.push(Line::from("  r  refresh"));
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
+        "Shell",
+        Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+    )));
+    lines.push(Line::from("  s / Alt+9  focus → auto `adb shell`"));
+    lines.push(Line::from("  Ctrl+\\  defocus (cycle to next panel)"));
+    lines.push(Line::from("  All keys route to the PTY while focused"));
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
         "Focus",
         Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
     )));
@@ -247,6 +263,7 @@ fn render_help(f: &mut Frame, area: Rect, theme: &Theme) {
         Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
     )));
     lines.push(Line::from("  d  open device selector"));
+    lines.push(Line::from("  Alt+8 / v  devices panel (j/k + Enter to switch)"));
     lines.push(Line::from(""));
     lines.push(Line::from("  ?  toggle this help"));
     lines.push(Line::from("  q  quit"));

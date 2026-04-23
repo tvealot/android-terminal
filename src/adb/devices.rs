@@ -11,6 +11,10 @@ const POLL_INTERVAL_MS: u64 = 4000;
 pub struct DeviceEntry {
     pub serial: String,
     pub state: String,
+    pub model: Option<String>,
+    pub release: Option<String>,
+    pub sdk: Option<String>,
+    pub battery: Option<u8>,
 }
 
 impl DeviceEntry {
@@ -24,7 +28,7 @@ pub fn list_all() -> Vec<DeviceEntry> {
         return Vec::new();
     };
     let stdout = String::from_utf8_lossy(&output.stdout);
-    stdout
+    let mut entries: Vec<DeviceEntry> = stdout
         .lines()
         .skip(1)
         .filter_map(|line| {
@@ -34,9 +38,56 @@ pub fn list_all() -> Vec<DeviceEntry> {
             Some(DeviceEntry {
                 serial: serial.to_string(),
                 state: state.to_string(),
+                model: None,
+                release: None,
+                sdk: None,
+                battery: None,
             })
         })
-        .collect()
+        .collect();
+    for entry in entries.iter_mut() {
+        if entry.is_ready() {
+            entry.model = getprop(&entry.serial, "ro.product.model");
+            entry.release = getprop(&entry.serial, "ro.build.version.release");
+            entry.sdk = getprop(&entry.serial, "ro.build.version.sdk");
+            entry.battery = battery(&entry.serial);
+        }
+    }
+    entries
+}
+
+fn getprop(serial: &str, key: &str) -> Option<String> {
+    let out = Command::new("adb")
+        .args(["-s", serial, "shell", "getprop", key])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if s.is_empty() {
+        None
+    } else {
+        Some(s)
+    }
+}
+
+fn battery(serial: &str) -> Option<u8> {
+    let out = Command::new("adb")
+        .args(["-s", serial, "shell", "dumpsys", "battery"])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&out.stdout);
+    for line in text.lines() {
+        let t = line.trim();
+        if let Some(v) = t.strip_prefix("level:") {
+            return v.trim().parse().ok();
+        }
+    }
+    None
 }
 
 pub fn spawn_poller(tx: Sender<Event>) {

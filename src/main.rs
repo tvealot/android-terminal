@@ -1,6 +1,7 @@
 mod adb;
 mod app;
 mod config;
+mod devices_ui;
 mod dispatch;
 mod files;
 mod files_ui;
@@ -16,6 +17,8 @@ mod network_ui;
 mod panel;
 mod processes;
 mod processes_ui;
+mod shell;
+mod shell_ui;
 mod theme;
 mod ui;
 
@@ -132,11 +135,24 @@ fn run_loop(
                 Event::Gradle(ev) => app.gradle.apply(ev),
                 Event::Monitor(sample) => app.monitor.push(sample),
                 Event::Processes(procs) => app.processes.replace(procs),
-                Event::Devices(list) => app.devices = list,
+                Event::Devices(list) => {
+                    app.devices = list;
+                    if app.devices.is_empty() {
+                        app.devices_selected = 0;
+                    } else if app.devices_selected >= app.devices.len() {
+                        app.devices_selected = app.devices.len() - 1;
+                    }
+                }
                 Event::Status { text, error } => app.flash(text, error),
             }
         }
         app.tick_status();
+        if let Some(msg) = app.shell.poll_exit() {
+            app.flash(msg, true);
+        }
+        let term_size = terminal.size()?;
+        update_shell_size(&mut app, term_size.height, term_size.width);
+        ensure_shell_started(&mut app);
 
         let theme = theme::by_name(&app.config.ui.theme);
         terminal.draw(|f| ui::render(f, &app, theme))?;
@@ -153,6 +169,7 @@ fn run_loop(
             if let Some(mut child) = runtime.logcat_child.take() {
                 let _ = child.kill();
             }
+            app.shell.stop();
             return Ok(());
         }
     }
@@ -196,6 +213,24 @@ fn handle_key(
         if !tab_to_global && app.files.handle_key(key) {
             return;
         }
+    }
+
+    // Shell panel captures all keys while focused. Escape hatch: Ctrl+\.
+    if app.focus == PanelId::Shell && app.shell.active {
+        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        if ctrl && matches!(key.code, KeyCode::Char('\\')) {
+            app.cycle_focus(true);
+            return;
+        }
+        if let Some(bytes) = shell_key_to_bytes(key) {
+            app.shell.write(&bytes);
+        }
+        return;
+    }
+
+    // Any key other than `g` resets a pending `gg` sequence.
+    if !matches!(key.code, KeyCode::Char('g')) {
+        app.pending_g = false;
     }
 
     match key.code {
@@ -248,6 +283,37 @@ fn handle_key(
             app.logcat.clear();
             app.flash("logcat cleared".to_string(), false);
         }
+        KeyCode::Char('R') if app.focus == PanelId::Logcat => {
+            app.logcat.toggle_regex();
+            let msg = if app.logcat.use_regex { "logcat: regex on" } else { "logcat: regex off" };
+            app.flash(msg.to_string(), false);
+        }
+        KeyCode::Char('j') | KeyCode::Down if app.focus == PanelId::Logcat => {
+            app.logcat.scroll_down(1);
+            app.pending_g = false;
+        }
+        KeyCode::Char('k') | KeyCode::Up if app.focus == PanelId::Logcat => {
+            app.logcat.scroll_up(1);
+            app.pending_g = false;
+        }
+        KeyCode::PageDown if app.focus == PanelId::Logcat => {
+            app.logcat.scroll_down(20);
+        }
+        KeyCode::PageUp if app.focus == PanelId::Logcat => {
+            app.logcat.scroll_up(20);
+        }
+        KeyCode::Char('G') if app.focus == PanelId::Logcat => {
+            app.logcat.scroll_to_bottom();
+            app.pending_g = false;
+        }
+        KeyCode::Char('g') if app.focus == PanelId::Logcat => {
+            if app.pending_g {
+                app.logcat.scroll_to_top();
+                app.pending_g = false;
+            } else {
+                app.pending_g = true;
+            }
+        }
         KeyCode::Char('C') if app.focus == PanelId::Issues => {
             app.issues.clear();
             app.flash("issues cleared".to_string(), false);
@@ -276,6 +342,18 @@ fn handle_key(
         KeyCode::Enter if app.focus == PanelId::Issues => {
             app.issues.toggle_expand();
         }
+        KeyCode::Char('j') | KeyCode::Down if app.focus == PanelId::Devices => {
+            if !app.devices.is_empty() {
+                app.devices_selected =
+                    (app.devices_selected + 1).min(app.devices.len() - 1);
+            }
+        }
+        KeyCode::Char('k') | KeyCode::Up if app.focus == PanelId::Devices => {
+            app.devices_selected = app.devices_selected.saturating_sub(1);
+        }
+        KeyCode::Enter if app.focus == PanelId::Devices => {
+            switch_to_selected_device(app, dispatcher, runtime);
+        }
         KeyCode::Char(c) => {
             if let Some(id) = by_focus_key(c) {
                 app.focus_panel(id);
@@ -292,9 +370,11 @@ fn handle_filter_key(app: &mut App, key: KeyEvent) {
         }
         KeyCode::Backspace => {
             app.logcat.filter.pop();
+            app.logcat.recompile();
         }
         KeyCode::Char(c) => {
             app.logcat.filter.push(c);
+            app.logcat.recompile();
         }
         _ => {}
     }
@@ -358,6 +438,115 @@ fn query_pid(handle: &adb::DeviceHandle, package: &str) -> Result<u32, String> {
         .next()
         .and_then(|s| s.parse().ok())
         .ok_or_else(|| "process not running".to_string())
+}
+
+fn shell_key_to_bytes(key: KeyEvent) -> Option<Vec<u8>> {
+    use KeyCode::*;
+    let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+    let alt = key.modifiers.contains(KeyModifiers::ALT);
+    let shift = key.modifiers.contains(KeyModifiers::SHIFT);
+    let mut out = Vec::new();
+    if alt {
+        out.push(0x1b);
+    }
+    match key.code {
+        Char(c) => {
+            if ctrl {
+                let b: u8 = match c {
+                    'a'..='z' => (c as u8) - b'a' + 1,
+                    'A'..='Z' => (c as u8) - b'A' + 1,
+                    '@' | ' ' => 0,
+                    '[' => 0x1b,
+                    '\\' => 0x1c,
+                    ']' => 0x1d,
+                    '^' => 0x1e,
+                    '_' => 0x1f,
+                    '?' => 0x7f,
+                    _ => (c as u8) & 0x1f,
+                };
+                out.push(b);
+            } else {
+                let mut buf = [0u8; 4];
+                out.extend_from_slice(c.encode_utf8(&mut buf).as_bytes());
+            }
+        }
+        Enter => out.push(b'\r'),
+        Backspace => out.push(0x7f),
+        Tab => {
+            if shift {
+                out.extend_from_slice(b"\x1b[Z");
+            } else {
+                out.push(b'\t');
+            }
+        }
+        BackTab => out.extend_from_slice(b"\x1b[Z"),
+        Esc => out.push(0x1b),
+        Up => out.extend_from_slice(b"\x1b[A"),
+        Down => out.extend_from_slice(b"\x1b[B"),
+        Right => out.extend_from_slice(b"\x1b[C"),
+        Left => out.extend_from_slice(b"\x1b[D"),
+        Home => out.extend_from_slice(b"\x1b[H"),
+        End => out.extend_from_slice(b"\x1b[F"),
+        PageUp => out.extend_from_slice(b"\x1b[5~"),
+        PageDown => out.extend_from_slice(b"\x1b[6~"),
+        Delete => out.extend_from_slice(b"\x1b[3~"),
+        Insert => out.extend_from_slice(b"\x1b[2~"),
+        _ => return None,
+    }
+    Some(out)
+}
+
+fn ensure_shell_started(app: &mut App) {
+    if app.focus != PanelId::Shell {
+        return;
+    }
+    if app.shell.active {
+        return;
+    }
+    let serial = app.current_device();
+    match app.shell.start(serial.as_deref()) {
+        Ok(()) => app.flash("shell started".to_string(), false),
+        Err(e) => app.flash(format!("shell: {}", e), true),
+    }
+}
+
+fn update_shell_size(app: &mut App, term_rows: u16, term_cols: u16) {
+    if !app.visible.contains(&PanelId::Shell) {
+        return;
+    }
+    let visible = app.visible_ordered();
+    let count = visible.len() as u16;
+    if count == 0 {
+        return;
+    }
+    // header=1, footer=1 → body height
+    let body = term_rows.saturating_sub(2);
+    let panel_h = body / count;
+    let inner_h = panel_h.saturating_sub(2);
+    let inner_w = term_cols.saturating_sub(2);
+    app.shell.resize(inner_h, inner_w);
+}
+
+fn switch_to_selected_device(
+    app: &mut App,
+    dispatcher: &DispatchContext,
+    runtime: &mut Runtime,
+) {
+    let Some(entry) = app.devices.get(app.devices_selected).cloned() else {
+        app.flash("no devices connected".to_string(), true);
+        return;
+    };
+    if !entry.is_ready() {
+        app.flash(
+            format!("device {} is {}, skipping", entry.serial, entry.state),
+            true,
+        );
+        return;
+    }
+    app.set_device(Some(entry.serial));
+    app.logcat.lines.clear();
+    app.logcat.clear_package_filter();
+    runtime.restart_logcat(app, dispatcher);
 }
 
 fn open_device_selector(app: &mut App) {

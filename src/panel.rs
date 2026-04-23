@@ -10,6 +10,8 @@ pub enum PanelId {
     Issues,
     Files,
     Network,
+    Devices,
+    Shell,
 }
 
 #[allow(dead_code)]
@@ -23,6 +25,8 @@ impl PanelId {
             PanelId::Issues => "issues",
             PanelId::Files => "files",
             PanelId::Network => "network",
+            PanelId::Devices => "devices",
+            PanelId::Shell => "shell",
         }
     }
 
@@ -53,6 +57,8 @@ pub const PANELS: &[PanelDef] = &[
     PanelDef { id: PanelId::Issues,    name: "issues",    toggle_key: '5', focus_key: 'i', requires: Feature::None },
     PanelDef { id: PanelId::Files,     name: "files",     toggle_key: '6', focus_key: 'f', requires: Feature::None },
     PanelDef { id: PanelId::Network,   name: "network",   toggle_key: '7', focus_key: 'n', requires: Feature::None },
+    PanelDef { id: PanelId::Devices,   name: "devices",   toggle_key: '8', focus_key: 'v', requires: Feature::None },
+    PanelDef { id: PanelId::Shell,     name: "shell",     toggle_key: '9', focus_key: 's', requires: Feature::None },
 ];
 
 pub fn by_toggle_key(c: char) -> Option<PanelId> {
