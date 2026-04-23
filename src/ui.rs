@@ -374,6 +374,8 @@ fn render_help(f: &mut Frame, area: Rect, theme: &Theme) {
         Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
     )));
     lines.push(Line::from("  r  run default task"));
+    lines.push(Line::from("  j/k  navigate host processes"));
+    lines.push(Line::from("  K  SIGTERM selected process"));
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
         "Files",

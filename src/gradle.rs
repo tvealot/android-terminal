@@ -66,6 +66,22 @@ pub struct GradleState {
     pub last_error: Option<String>,
     pub last_outcome: Option<String>,
     pub host_procs: Vec<HostGradleProc>,
+    pub selected: usize,
+}
+
+impl GradleState {
+    pub fn clamp_selected(&mut self) {
+        let n = self.host_procs.len();
+        if n == 0 {
+            self.selected = 0;
+        } else if self.selected >= n {
+            self.selected = n - 1;
+        }
+    }
+
+    pub fn selected_pid(&self) -> Option<u32> {
+        self.host_procs.get(self.selected).map(|p| p.pid)
+    }
 }
 
 impl GradleState {
@@ -142,6 +158,19 @@ pub fn spawn(jar: &Path, project_dir: &Path, task: &str, tx: Sender<Event>) -> s
         let _ = child.wait();
     });
     Ok(())
+}
+
+pub fn kill_host(pid: u32) -> Result<(), String> {
+    let status = Command::new("kill")
+        .arg("-TERM")
+        .arg(pid.to_string())
+        .status()
+        .map_err(|e| e.to_string())?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("kill exited with {}", status))
+    }
 }
 
 pub fn spawn_host_poller(tx: Sender<Event>) {

@@ -135,7 +135,10 @@ fn run_loop(
                     app.logcat.push(line);
                 }
                 Event::Gradle(ev) => app.gradle.apply(ev),
-                Event::HostGradle(list) => app.gradle.host_procs = list,
+                Event::HostGradle(list) => {
+                    app.gradle.host_procs = list;
+                    app.gradle.clamp_selected();
+                }
                 Event::Monitor(sample) => app.monitor.push(sample),
                 Event::Processes(procs) => app.processes.replace(procs),
                 Event::Devices(list) => {
@@ -351,6 +354,25 @@ fn handle_key(
         }
         KeyCode::Enter if app.focus == PanelId::Issues => {
             app.issues.toggle_expand();
+        }
+        KeyCode::Char('j') | KeyCode::Down if app.focus == PanelId::Gradle => {
+            if !app.gradle.host_procs.is_empty() {
+                app.gradle.selected =
+                    (app.gradle.selected + 1).min(app.gradle.host_procs.len() - 1);
+            }
+        }
+        KeyCode::Char('k') | KeyCode::Up if app.focus == PanelId::Gradle => {
+            app.gradle.selected = app.gradle.selected.saturating_sub(1);
+        }
+        KeyCode::Char('K') if app.focus == PanelId::Gradle => {
+            if let Some(pid) = app.gradle.selected_pid() {
+                match gradle::kill_host(pid) {
+                    Ok(()) => app.flash(format!("sent SIGTERM to pid {}", pid), false),
+                    Err(e) => app.flash(format!("kill {} failed: {}", pid, e), true),
+                }
+            } else {
+                app.flash("no process selected".to_string(), true);
+            }
         }
         KeyCode::Char('j') | KeyCode::Down if app.focus == PanelId::Devices => {
             if !app.devices.is_empty() {

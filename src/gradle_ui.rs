@@ -39,14 +39,23 @@ pub fn render(f: &mut Frame, area: Rect, app: &App, theme: &Theme, focused: bool
         ]));
     }
 
-    for p in &app.gradle.host_procs {
+    for (i, p) in app.gradle.host_procs.iter().enumerate() {
         let mb = p.rss_kb as f64 / 1024.0;
+        let is_sel = focused && i == app.gradle.selected;
+        let marker = if is_sel { "▶ " } else { "  " };
+        let kind_style = if is_sel {
+            Style::default()
+                .fg(theme.bg)
+                .bg(theme.accent)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(theme.warn).add_modifier(Modifier::BOLD)
+        };
+        let text_fg = if is_sel { theme.accent } else { theme.fg };
         lines.push(Line::from(vec![
-            Span::styled(
-                format!("{:<8} ", p.kind),
-                Style::default().fg(theme.warn).add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(format!("pid {:<6} ", p.pid), Style::default().fg(theme.fg)),
+            Span::styled(marker, Style::default().fg(theme.accent)),
+            Span::styled(format!("{:<8} ", p.kind), kind_style),
+            Span::styled(format!("pid {:<6} ", p.pid), Style::default().fg(text_fg)),
             Span::styled(
                 format!("cpu {:>5.1}%  ", p.cpu),
                 Style::default().fg(theme.muted),
