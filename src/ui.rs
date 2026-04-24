@@ -32,6 +32,10 @@ pub fn render(f: &mut Frame, app: &App, theme: &Theme) {
     }
     render_footer(f, vchunks[2], app, theme);
 
+    if let Some(id) = app.zoom {
+        render_zoom(f, vchunks[1], id, app, theme);
+    }
+
     if app.show_help {
         render_help(f, area, theme);
     }
@@ -320,6 +324,7 @@ fn render_footer(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
             Span::styled("w: project  ", Style::default().fg(theme.muted)),
             Span::styled("e: emulator  ", Style::default().fg(theme.muted)),
             Span::styled("F: fps  ", Style::default().fg(theme.muted)),
+            Span::styled("z: zoom  ", Style::default().fg(theme.muted)),
             Span::styled("/: filter  ", Style::default().fg(theme.muted)),
             Span::styled("P: package  ", Style::default().fg(theme.muted)),
             Span::styled("Space: pause  ", Style::default().fg(theme.muted)),
@@ -425,6 +430,7 @@ fn render_help(f: &mut Frame, area: Rect, theme: &Theme) {
         Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
     )));
     lines.push(Line::from("  Tab / Shift+Tab  cycle focus across visible panels"));
+    lines.push(Line::from("  z  zoom focused panel (Esc to close)"));
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
         "Device",
@@ -537,6 +543,34 @@ fn render_project_picker(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         Style::default().fg(theme.muted),
     )));
     f.render_widget(Paragraph::new(lines), inner);
+}
+
+fn render_zoom(f: &mut Frame, area: Rect, id: PanelId, app: &App, theme: &Theme) {
+    let width = (area.width as u32 * 9 / 10) as u16;
+    let height = (area.height as u32 * 9 / 10) as u16;
+    let rect = Rect {
+        x: area.x + (area.width - width) / 2,
+        y: area.y + (area.height - height) / 2,
+        width,
+        height,
+    };
+    f.render_widget(Clear, rect);
+    render_panel(f, rect, id, app, theme, true);
+    let hint = Rect {
+        x: rect.x + 1,
+        y: rect.y + rect.height.saturating_sub(1),
+        width: rect.width.saturating_sub(2),
+        height: 1,
+    };
+    if hint.height > 0 {
+        f.render_widget(
+            Paragraph::new(Line::from(Span::styled(
+                "Esc / z: close zoom",
+                Style::default().fg(theme.muted),
+            ))),
+            hint,
+        );
+    }
 }
 
 fn render_emulator_picker(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {

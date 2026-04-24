@@ -40,6 +40,7 @@ pub struct App {
     pub layout_editor: Option<LayoutEditor>,
     pub project_picker: Option<ProjectPicker>,
     pub emulator_picker: Option<EmulatorPicker>,
+    pub zoom: Option<PanelId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -122,6 +123,7 @@ impl App {
             layout_editor: None,
             project_picker: None,
             emulator_picker: None,
+            zoom: None,
         }
     }
 
@@ -176,6 +178,9 @@ impl App {
         }
         if self.visible.contains(&id) {
             self.visible.remove(&id);
+            if self.zoom == Some(id) {
+                self.zoom = None;
+            }
             if self.focus == id {
                 self.focus = self.visible.iter().copied().next().unwrap_or(id);
             }

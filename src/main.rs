@@ -296,11 +296,17 @@ fn handle_key(
         KeyCode::Esc if app.show_help => {
             app.show_help = false;
         }
+        KeyCode::Esc if app.zoom.is_some() => {
+            app.zoom = None;
+        }
         KeyCode::Esc if app.focus == PanelId::Issues && app.issues.expanded.is_some() => {
             app.issues.close_detail();
         }
         KeyCode::Char('q') | KeyCode::Esc => {
             app.should_quit = true;
+        }
+        KeyCode::Char('z') => {
+            toggle_zoom(app);
         }
         KeyCode::Char('?') => {
             app.show_help = !app.show_help;
@@ -831,6 +837,18 @@ fn handle_fps_package_key(app: &mut App, key: KeyEvent) {
         }
         _ => {}
     }
+}
+
+fn toggle_zoom(app: &mut App) {
+    if app.zoom.is_some() {
+        app.zoom = None;
+        return;
+    }
+    if app.focus == PanelId::Shell {
+        app.flash("shell panel does not support zoom".to_string(), true);
+        return;
+    }
+    app.zoom = Some(app.focus);
 }
 
 fn start_gradle(app: &mut App, dispatcher: &DispatchContext) {
