@@ -1,0 +1,90 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_TOOLCHAIN: 1.88.0
+  GRADLE_VERSION: 8.10
+
+jobs:
+  build:
+    name: Build ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        run: |
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal
+          rustup default "$RUST_TOOLCHAIN"
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: ${{ env.GRADLE_VERSION }}
+
+      - name: Build Rust binary
+        run: cargo build --release --locked
+
+      - name: Build Gradle sidecar
+        run: gradle -p sidecar/gradle-agent jar
+
+      - name: Package release
+        env:
+          ARTIFACT_NAME: droidscope-${{ runner.os }}-${{ runner.arch }}
+        run: |
+          mkdir -p "dist/$ARTIFACT_NAME/bin"
+          mkdir -p "dist/$ARTIFACT_NAME/share/droidscope"
+          cp target/release/droidscope "dist/$ARTIFACT_NAME/bin/droidscope"
+          cp sidecar/gradle-agent/build/libs/gradle-agent-0.1.0.jar "dist/$ARTIFACT_NAME/share/droidscope/gradle-agent.jar"
+          cp README.md LICENSE "dist/$ARTIFACT_NAME/"
+          tar -czf "dist/$ARTIFACT_NAME.tar.gz" -C dist "$ARTIFACT_NAME"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: droidscope-${{ runner.os }}-${{ runner.arch }}
+          path: dist/droidscope-${{ runner.os }}-${{ runner.arch }}.tar.gz
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.tar.gz
+          generate_release_notes: true
