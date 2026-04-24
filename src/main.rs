@@ -19,6 +19,7 @@ mod intents;
 mod intents_ui;
 mod issues;
 mod issues_ui;
+mod keymap;
 mod layout;
 mod logcat;
 mod logcat_ui;
@@ -271,6 +272,9 @@ fn handle_key(
         InputMode::Normal => {}
     }
 
+    let raw = key;
+    let key = keymap::normalize(key);
+
     // Project picker overlay: consumes keys while open.
     if app.project_picker.is_some() {
         return handle_project_picker_key(app, key);
@@ -349,7 +353,7 @@ fn handle_key(
             app.cycle_focus(true);
             return;
         }
-        if let Some(bytes) = shell_key_to_bytes(key) {
+        if let Some(bytes) = shell_key_to_bytes(raw) {
             app.shell.write(&bytes);
         }
         return;
