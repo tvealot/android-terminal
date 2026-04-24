@@ -12,6 +12,8 @@ pub struct Config {
     pub gradle: GradleConfig,
     #[serde(default)]
     pub ui: UiConfig,
+    #[serde(default)]
+    pub android: AndroidConfig,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -19,6 +21,11 @@ pub struct GradleConfig {
     pub project_dir: Option<PathBuf>,
     pub default_task: Option<String>,
     pub jar_path: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct AndroidConfig {
+    pub package: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -107,6 +114,32 @@ pub fn update_project_dir(project_dir: &Path) -> std::io::Result<()> {
             "project_dir".to_string(),
             toml::Value::String(project_dir.display().to_string()),
         );
+    }
+    let text = toml::to_string_pretty(&doc)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+    fs::write(cfg_path, text)
+}
+
+pub fn update_android_package(package: Option<&str>) -> std::io::Result<()> {
+    let dir = config_dir();
+    fs::create_dir_all(&dir)?;
+    let cfg_path = dir.join("config.toml");
+    let mut doc: toml::Table = match fs::read_to_string(&cfg_path) {
+        Ok(text) => text.parse().unwrap_or_default(),
+        Err(_) => toml::Table::new(),
+    };
+    let android = doc
+        .entry("android".to_string())
+        .or_insert_with(|| toml::Value::Table(toml::Table::new()));
+    if let toml::Value::Table(a) = android {
+        if let Some(package) = package {
+            a.insert(
+                "package".to_string(),
+                toml::Value::String(package.to_string()),
+            );
+        } else {
+            a.remove("package");
+        }
     }
     let text = toml::to_string_pretty(&doc)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;

@@ -5,10 +5,15 @@ logcat, issues triage, and an embedded `adb shell`.
 
 Inspired by [measure-sh/holo](https://github.com/measure-sh/holo), extended with:
 
-- **Nine toggleable panels** (`1..9`) with a grid **layout editor** (`0`) — state
-  persists across runs.
+- **Toggleable panels** (`1..9`, `A`, `B`, `U`, `F`) with a grid **layout editor**
+  (`0`) — state persists across runs.
 - **Gradle panel** — live Tooling-API task stream (JVM sidecar) plus a host
   process list (daemon / wrapper / kotlin / android / agent) with `SIGTERM` kill.
+- **App panel** — launch, force-stop, clear data, open app settings, and inspect
+  package metadata for a shared target package.
+- **Data panel** — browse app-private files through `run-as`, with text preview.
+- **Intents panel** — run deep links via `am start -a VIEW -d`, optionally scoped
+  to the shared target package.
 - **Issues panel** — detects Java/Kotlin stacktraces in logcat and captures the
   full trace for a detail view.
 - **Project picker** (`w`) — scans `~/Documents` for Android projects (directories
@@ -39,12 +44,16 @@ Inspired by [measure-sh/holo](https://github.com/measure-sh/holo), extended with
 | network   | `7` | `n` | Logcat view filtered to `okhttp`/`http`/`socket`/`dns`/...  |
 | devices   | `8` | `v` | `adb devices` list, `Enter` to switch                       |
 | shell     | `9` | `s` | Embedded `adb shell` PTY                                    |
+| app       | `A` | `a` | Launch / force-stop / clear data / settings / package info  |
+| data      | `B` | `b` | `run-as` app-private file browser with preview              |
+| intents   | `U` | `u` | Deep link runner using `am start -a VIEW -d`                 |
+| fps       | `F` | `F` | Focused app frame pacing sample                             |
 
 ## Layout
 
 The body is stacked vertically across visible panels by default. Press `0` to
 open the **grid layout editor** — pick cells with `h/j/k/l` + `v`, assign a
-panel with `1..9`, `Enter` to save. Grid persists in `state.json`.
+panel with its toggle key, `Enter` to save. Grid persists in `state.json`.
 
 ```
 src/
@@ -60,12 +69,16 @@ src/
   logcat_ui.rs
   gradle.rs           sidecar spawn, host ps poller, GradleState
   gradle_ui.rs
+  app_control.rs / app_control_ui.rs
+  app_data.rs / app_data_ui.rs
+  intents.rs / intents_ui.rs
   monitor.rs / monitor_ui.rs
   processes.rs / processes_ui.rs
   issues.rs / issues_ui.rs     stacktrace detector + expanded detail
   files.rs / files_ui.rs       tree + preview
   network_ui.rs
   devices_ui.rs
+  fps.rs / fps_ui.rs
   shell.rs / shell_ui.rs       portable-pty + vt100
   project_picker.rs            ~/Documents scan for gradlew projects
   adb/                         subprocess wrappers (logcat, devices, ...)
@@ -118,6 +131,9 @@ theme = "dark"   # or "light"
 project_dir  = "/path/to/your/android/project"
 default_task = "assembleDebug"
 jar_path     = "~/.local/share/droidscope/gradle-agent.jar"
+
+[android]
+package = "com.example.app"
 ```
 
 Use `w` in the TUI to pick a project interactively — it scans `~/Documents`
@@ -139,12 +155,13 @@ on resize.
 
 | Key          | Action                                            |
 | ------------ | ------------------------------------------------- |
-| `1..9`       | toggle panel visibility                           |
+| `1..9`, `A`, `B`, `U`, `F` | toggle panel visibility             |
 | `0`          | open grid layout editor                           |
-| `l/m/g/p/i/f/n/v/s` | focus panel (logcat/monitor/gradle/processes/issues/files/network/devices/shell) |
+| `l/m/g/p/i/f/n/v/s/a/b/u/F` | focus panel                   |
 | `Tab` / `Shift+Tab` | cycle focus across visible panels          |
 | `d`          | open device selector overlay                      |
 | `w`          | open project picker overlay                       |
+| `e`          | open emulator picker overlay                      |
 | `r`          | run configured Gradle task                        |
 | `?`          | help overlay                                      |
 | `q` / `Esc`  | quit                                              |
@@ -177,13 +194,33 @@ on resize.
 | `C` (issues) | clear issues list |
 | `Ctrl+\` (shell) | defocus PTY (cycle to next panel) |
 
+### App / Data / Intents
+
+| Key | Action |
+| --- | ------ |
+| `P` | set shared target package (`[android].package`) |
+| `A` / `a` | toggle / focus App Control |
+| `B` / `b` | toggle / focus App Data |
+| `U` / `u` | toggle / focus Intents |
+| `j`/`k` or `↓`/`↑` | navigate app actions / data entries |
+| `Enter` (app) | run selected app action |
+| `!` (app) | confirm destructive app action (`clear data`) |
+| `r` (data) | refresh current `run-as` directory |
+| `Enter` / `→` (data) | open directory or file preview |
+| `←` / `Backspace` (data) | close preview or go to parent directory |
+| `Tab` (data) | switch to preview pane |
+| `/` (intents) | edit deep link URL |
+| `T` (intents) | toggle resolver vs explicit target package |
+| `C` (intents) | clear deep link URL |
+| `Enter` (intents) | launch deep link |
+
 ### Layout editor (after `0`)
 
 | Key | Action |
 | --- | ------ |
 | `h/j/k/l` | move cursor |
 | `v` / `Space` | toggle selection |
-| `1..9` | assign panel to selected cell |
+| panel toggle key | assign panel to selected cell |
 | `x` / `d` | delete cell at cursor |
 | `c` | clear all cells |
 | `[` / `]` | cols -/+ |

@@ -1,5 +1,9 @@
 mod adb;
 mod app;
+mod app_control;
+mod app_control_ui;
+mod app_data;
+mod app_data_ui;
 mod clipboard;
 mod config;
 mod devices_ui;
@@ -11,6 +15,8 @@ mod fps;
 mod fps_ui;
 mod gradle;
 mod gradle_ui;
+mod intents;
+mod intents_ui;
 mod issues;
 mod issues_ui;
 mod layout;
@@ -177,6 +183,33 @@ fn run_loop(
                     }
                 }
                 Event::Fps(sample) => app.fps.push(sample),
+                Event::AppControl(result) => {
+                    app.app_control.running = false;
+                    app.app_control.pending_confirm = None;
+                    let error = !result.success;
+                    let text = result.summary.clone();
+                    app.app_control.last = Some(result);
+                    app.flash(text, error);
+                }
+                Event::AppData(event) => {
+                    if app_data_event_matches_target(&app, &event) {
+                        let status = app_data_status(&event);
+                        app.app_data.apply(event);
+                        if let Some((text, error)) = status {
+                            app.flash(text, error);
+                        }
+                    }
+                }
+                Event::Intent(result) => {
+                    app.intents.running = false;
+                    if result.success {
+                        app.intents.remember(&result.url);
+                    }
+                    let error = !result.success;
+                    let text = result.summary.clone();
+                    app.intents.last = Some(result);
+                    app.flash(text, error);
+                }
                 Event::Status { text, error } => app.flash(text, error),
             }
         }
@@ -226,6 +259,12 @@ fn handle_key(
         InputMode::FpsPackage => {
             return handle_fps_package_key(app, key);
         }
+        InputMode::TargetPackage => {
+            return handle_target_package_key(app, key);
+        }
+        InputMode::DeepLinkUrl => {
+            return handle_deep_link_url_key(app, key);
+        }
         InputMode::LayoutEdit => {
             return handle_layout_editor_key(app, key);
         }
@@ -252,11 +291,9 @@ fn handle_key(
             app.open_layout_editor();
             return;
         }
-        if c.is_ascii_digit() {
-            if let Some(id) = by_toggle_key(c) {
-                app.toggle_panel(id);
-                return;
-            }
+        if let Some(id) = by_toggle_key(c) {
+            app.toggle_panel(id);
+            return;
         }
     }
 
@@ -267,6 +304,18 @@ fn handle_key(
         if !tab_to_global && app.files.handle_key(key) {
             return;
         }
+    }
+
+    if app.focus == PanelId::AppControl && handle_app_control_key(app, key, dispatcher) {
+        return;
+    }
+
+    if app.focus == PanelId::AppData && handle_app_data_key(app, key, dispatcher) {
+        return;
+    }
+
+    if app.focus == PanelId::Intents && handle_intents_key(app, key, dispatcher) {
+        return;
     }
 
     // Shell panel captures all keys while focused. Escape hatch: Ctrl+\.
@@ -835,6 +884,333 @@ fn handle_fps_package_key(app: &mut App, key: KeyEvent) {
         }
         _ => {}
     }
+}
+
+fn handle_target_package_key(app: &mut App, key: KeyEvent) {
+    match key.code {
+        KeyCode::Esc => {
+            app.input_mode = InputMode::Normal;
+            app.target_package_input.clear();
+        }
+        KeyCode::Enter => {
+            let pkg = app.target_package_input.trim().to_string();
+            app.input_mode = InputMode::Normal;
+            app.target_package_input.clear();
+            if pkg.is_empty() {
+                app.set_target_package(None);
+            } else if is_valid_package(&pkg) {
+                app.set_target_package(Some(pkg));
+            } else {
+                app.flash(
+                    "package may contain only letters, digits, dot, underscore".to_string(),
+                    true,
+                );
+            }
+        }
+        KeyCode::Backspace => {
+            app.target_package_input.pop();
+        }
+        KeyCode::Char(c) => {
+            app.target_package_input.push(c);
+        }
+        _ => {}
+    }
+}
+
+fn handle_deep_link_url_key(app: &mut App, key: KeyEvent) {
+    match key.code {
+        KeyCode::Esc => {
+            app.input_mode = InputMode::Normal;
+            app.deep_link_input.clear();
+        }
+        KeyCode::Enter => {
+            let url = app.deep_link_input.trim().to_string();
+            app.input_mode = InputMode::Normal;
+            app.deep_link_input.clear();
+            app.intents.set_url(url);
+        }
+        KeyCode::Backspace => {
+            app.deep_link_input.pop();
+        }
+        KeyCode::Char(c) => {
+            app.deep_link_input.push(c);
+        }
+        _ => {}
+    }
+}
+
+fn handle_app_control_key(app: &mut App, key: KeyEvent, dispatcher: &DispatchContext) -> bool {
+    match key.code {
+        KeyCode::Char('P') => {
+            app.target_package_input = app.target_package.clone().unwrap_or_default();
+            app.input_mode = InputMode::TargetPackage;
+            true
+        }
+        KeyCode::Char('j') | KeyCode::Down => {
+            app.app_control.move_down();
+            true
+        }
+        KeyCode::Char('k') | KeyCode::Up => {
+            app.app_control.move_up();
+            true
+        }
+        KeyCode::Enter => {
+            start_app_action(app, dispatcher, false);
+            true
+        }
+        KeyCode::Char('!') => {
+            start_app_action(app, dispatcher, true);
+            true
+        }
+        _ => false,
+    }
+}
+
+fn start_app_action(app: &mut App, dispatcher: &DispatchContext, confirm: bool) {
+    if app.app_control.running {
+        app.flash("app action already running".to_string(), false);
+        return;
+    }
+    let Some(package) = app.target_package.clone() else {
+        app.flash("set target package with P".to_string(), true);
+        return;
+    };
+    let action = app.app_control.selected_action();
+    if action.destructive() && !confirm {
+        app.app_control.pending_confirm = Some(action);
+        app.flash(
+            format!("press ! to confirm {} for {}", action.label(), package),
+            true,
+        );
+        return;
+    }
+    if action.destructive() && app.app_control.pending_confirm != Some(action) {
+        app.app_control.pending_confirm = Some(action);
+        app.flash(
+            format!(
+                "press ! again to confirm {} for {}",
+                action.label(),
+                package
+            ),
+            true,
+        );
+        return;
+    }
+    app.app_control.pending_confirm = None;
+    app.app_control.running = true;
+    app.app_control.last = None;
+    crate::app_control::spawn_action(app.device.clone(), package, action, dispatcher.tx.clone());
+}
+
+fn handle_app_data_key(app: &mut App, key: KeyEvent, dispatcher: &DispatchContext) -> bool {
+    if app.app_data.preview.is_some() && app.app_data.preview_focused {
+        return match key.code {
+            KeyCode::Char('j') | KeyCode::Down => {
+                app.app_data.preview_scroll = app.app_data.preview_scroll.saturating_add(1);
+                true
+            }
+            KeyCode::Char('k') | KeyCode::Up => {
+                app.app_data.preview_scroll = app.app_data.preview_scroll.saturating_sub(1);
+                true
+            }
+            KeyCode::Char(' ') => {
+                app.app_data.preview_scroll = app.app_data.preview_scroll.saturating_add(12);
+                true
+            }
+            KeyCode::Tab => {
+                app.app_data.preview_focused = false;
+                true
+            }
+            KeyCode::Backspace | KeyCode::Esc => {
+                app.app_data.close_preview();
+                true
+            }
+            _ => false,
+        };
+    }
+
+    match key.code {
+        KeyCode::Char('P') => {
+            app.target_package_input = app.target_package.clone().unwrap_or_default();
+            app.input_mode = InputMode::TargetPackage;
+            true
+        }
+        KeyCode::Char('r') => {
+            refresh_app_data(app, dispatcher, app.app_data.path.clone());
+            true
+        }
+        KeyCode::Char('j') | KeyCode::Down => {
+            app.app_data.move_down();
+            true
+        }
+        KeyCode::Char('k') | KeyCode::Up => {
+            app.app_data.move_up();
+            true
+        }
+        KeyCode::Enter | KeyCode::Right => {
+            open_selected_app_data(app, dispatcher);
+            true
+        }
+        KeyCode::Left => {
+            if app.app_data.preview.is_some() {
+                app.app_data.close_preview();
+            } else if let Some(parent) = app.app_data.parent_path() {
+                refresh_app_data(app, dispatcher, parent);
+            }
+            true
+        }
+        KeyCode::Backspace => {
+            if app.app_data.preview.is_some() {
+                app.app_data.close_preview();
+            } else if let Some(parent) = app.app_data.parent_path() {
+                refresh_app_data(app, dispatcher, parent);
+            }
+            true
+        }
+        KeyCode::Tab if app.app_data.preview.is_some() => {
+            app.app_data.preview_focused = true;
+            true
+        }
+        _ => false,
+    }
+}
+
+fn refresh_app_data(app: &mut App, dispatcher: &DispatchContext, path: String) {
+    let Some(package) = app.target_package.clone() else {
+        app.flash("set target package with P".to_string(), true);
+        return;
+    };
+    app.app_data.loading = true;
+    app.app_data.last_error = None;
+    crate::app_data::spawn_list(app.device.clone(), package, path, dispatcher.tx.clone());
+}
+
+fn open_selected_app_data(app: &mut App, dispatcher: &DispatchContext) {
+    let Some(entry) = app.app_data.selected_entry().cloned() else {
+        refresh_app_data(app, dispatcher, app.app_data.path.clone());
+        return;
+    };
+    let Some(package) = app.target_package.clone() else {
+        app.flash("set target package with P".to_string(), true);
+        return;
+    };
+    match entry.kind {
+        crate::app_data::DataEntryKind::Directory => {
+            app.app_data.loading = true;
+            app.app_data.last_error = None;
+            crate::app_data::spawn_list(
+                app.device.clone(),
+                package,
+                entry.path,
+                dispatcher.tx.clone(),
+            );
+        }
+        crate::app_data::DataEntryKind::File | crate::app_data::DataEntryKind::Other => {
+            app.app_data.loading = true;
+            app.app_data.last_error = None;
+            crate::app_data::spawn_preview(
+                app.device.clone(),
+                package,
+                entry.path,
+                dispatcher.tx.clone(),
+            );
+        }
+    }
+}
+
+fn handle_intents_key(app: &mut App, key: KeyEvent, dispatcher: &DispatchContext) -> bool {
+    match key.code {
+        KeyCode::Char('/') => {
+            app.deep_link_input = app.intents.url.clone();
+            app.input_mode = InputMode::DeepLinkUrl;
+            true
+        }
+        KeyCode::Char('P') => {
+            app.target_package_input = app.target_package.clone().unwrap_or_default();
+            app.input_mode = InputMode::TargetPackage;
+            true
+        }
+        KeyCode::Char('T') => {
+            app.intents.use_target_package = !app.intents.use_target_package;
+            let mode = if app.intents.use_target_package {
+                "intent package target on"
+            } else {
+                "intent package target off"
+            };
+            app.flash(mode.to_string(), false);
+            true
+        }
+        KeyCode::Char('C') => {
+            app.intents.url.clear();
+            app.flash("deep link URL cleared".to_string(), false);
+            true
+        }
+        KeyCode::Enter => {
+            launch_intent(app, dispatcher);
+            true
+        }
+        _ => false,
+    }
+}
+
+fn launch_intent(app: &mut App, dispatcher: &DispatchContext) {
+    if app.intents.running {
+        app.flash("intent already running".to_string(), false);
+        return;
+    }
+    let url = app.intents.url.trim().to_string();
+    if url.is_empty() {
+        app.flash("set deep link URL with /".to_string(), true);
+        return;
+    }
+    let package = if app.intents.use_target_package {
+        let Some(package) = app.target_package.clone() else {
+            app.flash(
+                "set target package with P or disable target with T".to_string(),
+                true,
+            );
+            return;
+        };
+        Some(package)
+    } else {
+        None
+    };
+    app.intents.running = true;
+    app.intents.last = None;
+    crate::intents::spawn_launch(app.device.clone(), url, package, dispatcher.tx.clone());
+}
+
+fn app_data_event_matches_target(app: &App, event: &crate::app_data::AppDataEvent) -> bool {
+    let Some(target) = app.target_package.as_deref() else {
+        return false;
+    };
+    match event {
+        crate::app_data::AppDataEvent::Listed { package, .. }
+        | crate::app_data::AppDataEvent::Previewed { package, .. }
+        | crate::app_data::AppDataEvent::Error { package, .. } => package == target,
+    }
+}
+
+fn app_data_status(event: &crate::app_data::AppDataEvent) -> Option<(String, bool)> {
+    match event {
+        crate::app_data::AppDataEvent::Listed { path, entries, .. } => Some((
+            format!("data: {} entries in {}", entries.len(), path),
+            false,
+        )),
+        crate::app_data::AppDataEvent::Previewed { preview, .. } => {
+            Some((format!("data: preview {}", preview.path), false))
+        }
+        crate::app_data::AppDataEvent::Error { path, message, .. } => {
+            Some((format!("data {}: {}", path, message), true))
+        }
+    }
+}
+
+fn is_valid_package(package: &str) -> bool {
+    !package.is_empty()
+        && package
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.'))
 }
 
 fn copy_selected_stacktrace(app: &mut App) {

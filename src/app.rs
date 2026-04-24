@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use crate::adb::devices::DeviceEntry;
 use crate::adb::DeviceHandle;
-use crate::config::{save_state, update_project_dir, Config, State};
+use crate::config::{save_state, update_android_package, update_project_dir, Config, State};
 use crate::emulator_picker::EmulatorPicker;
 use crate::files::FilesState;
 use crate::fps::{self, FpsState};
@@ -20,6 +20,7 @@ pub struct App {
     pub status: Option<StatusFlash>,
     pub show_help: bool,
     pub should_quit: bool,
+    pub target_package: Option<String>,
     pub logcat: crate::logcat::LogcatState,
     pub gradle: crate::gradle::GradleState,
     pub monitor: crate::monitor::MonitorState,
@@ -28,6 +29,9 @@ pub struct App {
     pub files: FilesState,
     pub shell: crate::shell::ShellState,
     pub fps: FpsState,
+    pub app_control: crate::app_control::AppControlState,
+    pub app_data: crate::app_data::AppDataState,
+    pub intents: crate::intents::IntentsState,
     pub input_mode: InputMode,
     pub device: DeviceHandle,
     pub devices: Vec<DeviceEntry>,
@@ -35,6 +39,8 @@ pub struct App {
     pub device_selector: Option<usize>,
     pub package_input: String,
     pub fps_package_input: String,
+    pub target_package_input: String,
+    pub deep_link_input: String,
     pub pending_g: bool,
     pub layout: Option<LayoutGrid>,
     pub layout_editor: Option<LayoutEditor>,
@@ -49,6 +55,8 @@ pub enum InputMode {
     LogcatFilter,
     LogcatPackage,
     FpsPackage,
+    TargetPackage,
+    DeepLinkUrl,
     LayoutEdit,
 }
 
@@ -93,6 +101,7 @@ impl App {
         };
 
         let files = FilesState::new(config.gradle.project_dir.clone());
+        let target_package = config.android.package.clone();
 
         Self {
             config,
@@ -103,6 +112,7 @@ impl App {
             status: None,
             show_help: false,
             should_quit: false,
+            target_package,
             logcat: crate::logcat::LogcatState::default(),
             gradle: crate::gradle::GradleState::default(),
             monitor: crate::monitor::MonitorState::default(),
@@ -111,6 +121,9 @@ impl App {
             files,
             shell: crate::shell::ShellState::default(),
             fps: FpsState::new(fps_package),
+            app_control: crate::app_control::AppControlState::default(),
+            app_data: crate::app_data::AppDataState::default(),
+            intents: crate::intents::IntentsState::default(),
             input_mode: InputMode::Normal,
             device,
             devices: Vec::new(),
@@ -118,12 +131,27 @@ impl App {
             device_selector: None,
             package_input: String::new(),
             fps_package_input: String::new(),
+            target_package_input: String::new(),
+            deep_link_input: String::new(),
             pending_g: false,
             layout,
             layout_editor: None,
             project_picker: None,
             emulator_picker: None,
             zoom: None,
+        }
+    }
+
+    pub fn set_target_package(&mut self, package: Option<String>) {
+        self.config.android.package = package.clone();
+        self.target_package = package.clone();
+        self.app_data.reset_for_package();
+        match update_android_package(package.as_deref()) {
+            Ok(()) => match package {
+                Some(pkg) => self.flash(format!("target package: {}", pkg), false),
+                None => self.flash("target package cleared".to_string(), false),
+            },
+            Err(e) => self.flash(format!("save config: {}", e), true),
         }
     }
 

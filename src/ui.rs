@@ -9,8 +9,8 @@ use crate::layout::{cell_rect, LayoutEditor, LayoutGrid};
 use crate::panel::{def, PanelId, PANELS};
 use crate::theme::Theme;
 use crate::{
-    devices_ui, files_ui, fps_ui, gradle_ui, issues_ui, logcat_ui, monitor_ui, network_ui,
-    processes_ui, shell_ui,
+    app_control_ui, app_data_ui, devices_ui, files_ui, fps_ui, gradle_ui, intents_ui, issues_ui,
+    logcat_ui, monitor_ui, network_ui, processes_ui, shell_ui,
 };
 
 pub fn render(f: &mut Frame, app: &App, theme: &Theme) {
@@ -56,7 +56,10 @@ pub fn render(f: &mut Frame, app: &App, theme: &Theme) {
 fn render_header(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     let mut spans = vec![Span::styled(
         " droidscope ",
-        Style::default().fg(theme.bg).bg(theme.accent).add_modifier(Modifier::BOLD),
+        Style::default()
+            .fg(theme.bg)
+            .bg(theme.accent)
+            .add_modifier(Modifier::BOLD),
     )];
     spans.push(Span::raw(" "));
     let dev_label = match app.current_device() {
@@ -103,7 +106,7 @@ fn render_body(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
                 Style::default().fg(theme.warn).add_modifier(Modifier::BOLD),
             )),
             Line::from(""),
-            Line::from("Press 1..9 to toggle panels, 0 for layout editor, ? for help, q to quit."),
+            Line::from("Press panel toggle keys, 0 for layout editor, ? for help, q to quit."),
         ])
         .wrap(Wrap { trim: false });
         f.render_widget(help, area);
@@ -111,7 +114,10 @@ fn render_body(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     }
 
     let count = visible.len() as u32;
-    let constraints: Vec<Constraint> = visible.iter().map(|_| Constraint::Ratio(1, count)).collect();
+    let constraints: Vec<Constraint> = visible
+        .iter()
+        .map(|_| Constraint::Ratio(1, count))
+        .collect();
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints(constraints)
@@ -195,7 +201,9 @@ fn render_layout_editor(f: &mut Frame, area: Rect, editor: &LayoutEditor, theme:
             let sel_style = if editor.sel_start.is_some() {
                 Style::default().fg(theme.warn).add_modifier(Modifier::BOLD)
             } else {
-                Style::default().fg(theme.accent).add_modifier(Modifier::BOLD)
+                Style::default()
+                    .fg(theme.accent)
+                    .add_modifier(Modifier::BOLD)
             };
             let sel_block = Block::default()
                 .borders(Borders::ALL)
@@ -209,7 +217,9 @@ fn render_layout_editor(f: &mut Frame, area: Rect, editor: &LayoutEditor, theme:
     lines.push(Line::from(vec![
         Span::styled(
             format!("grid {}x{}  ", grid.cols, grid.rows),
-            Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(theme.accent)
+                .add_modifier(Modifier::BOLD),
         ),
         Span::styled(
             format!("cur ({},{})  ", editor.cursor_x, editor.cursor_y),
@@ -225,7 +235,7 @@ fn render_layout_editor(f: &mut Frame, area: Rect, editor: &LayoutEditor, theme:
         Span::raw("move  "),
         Span::styled("v ", Style::default().fg(theme.warn)),
         Span::raw("toggle selection  "),
-        Span::styled("1..9/F ", Style::default().fg(theme.warn)),
+        Span::styled("1..9/A/B/U/F ", Style::default().fg(theme.warn)),
         Span::raw("assign panel"),
     ]));
     lines.push(Line::from(vec![
@@ -253,14 +263,7 @@ fn render_layout_editor(f: &mut Frame, area: Rect, editor: &LayoutEditor, theme:
     f.render_widget(Paragraph::new(lines), help_area);
 }
 
-fn render_panel(
-    f: &mut Frame,
-    area: Rect,
-    id: PanelId,
-    app: &App,
-    theme: &Theme,
-    focused: bool,
-) {
+fn render_panel(f: &mut Frame, area: Rect, id: PanelId, app: &App, theme: &Theme, focused: bool) {
     match id {
         PanelId::Logcat => logcat_ui::render(f, area, app, theme, focused),
         PanelId::Gradle => gradle_ui::render(f, area, app, theme, focused),
@@ -271,6 +274,9 @@ fn render_panel(
         PanelId::Network => network_ui::render(f, area, app, theme, focused),
         PanelId::Devices => devices_ui::render(f, area, app, theme, focused),
         PanelId::Shell => shell_ui::render(f, area, app, theme, focused),
+        PanelId::AppControl => app_control_ui::render(f, area, app, theme, focused),
+        PanelId::AppData => app_data_ui::render(f, area, app, theme, focused),
+        PanelId::Intents => intents_ui::render(f, area, app, theme, focused),
         PanelId::Fps => fps_ui::render(f, area, app, theme, focused),
     }
 }
@@ -280,7 +286,9 @@ fn render_footer(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         Line::from(vec![
             Span::styled(
                 "filter: ",
-                Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(theme.accent)
+                    .add_modifier(Modifier::BOLD),
             ),
             Span::styled(app.logcat.filter.clone(), Style::default().fg(theme.fg)),
             Span::styled("_  ", Style::default().fg(theme.warn)),
@@ -290,7 +298,9 @@ fn render_footer(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         Line::from(vec![
             Span::styled(
                 "package: ",
-                Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(theme.accent)
+                    .add_modifier(Modifier::BOLD),
             ),
             Span::styled(app.package_input.clone(), Style::default().fg(theme.fg)),
             Span::styled("_  ", Style::default().fg(theme.warn)),
@@ -303,7 +313,9 @@ fn render_footer(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         Line::from(vec![
             Span::styled(
                 "fps package: ",
-                Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(theme.accent)
+                    .add_modifier(Modifier::BOLD),
             ),
             Span::styled(app.fps_package_input.clone(), Style::default().fg(theme.fg)),
             Span::styled("_  ", Style::default().fg(theme.warn)),
@@ -312,17 +324,57 @@ fn render_footer(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
                 Style::default().fg(theme.muted),
             ),
         ])
+    } else if app.input_mode == crate::app::InputMode::TargetPackage {
+        Line::from(vec![
+            Span::styled(
+                "target package: ",
+                Style::default()
+                    .fg(theme.accent)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                app.target_package_input.clone(),
+                Style::default().fg(theme.fg),
+            ),
+            Span::styled("_  ", Style::default().fg(theme.warn)),
+            Span::styled(
+                "Enter: apply  Esc: cancel  (empty = clear)",
+                Style::default().fg(theme.muted),
+            ),
+        ])
+    } else if app.input_mode == crate::app::InputMode::DeepLinkUrl {
+        Line::from(vec![
+            Span::styled(
+                "deep link: ",
+                Style::default()
+                    .fg(theme.accent)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(app.deep_link_input.clone(), Style::default().fg(theme.fg)),
+            Span::styled("_  ", Style::default().fg(theme.warn)),
+            Span::styled(
+                "Enter: apply  Esc: cancel",
+                Style::default().fg(theme.muted),
+            ),
+        ])
     } else if let Some(flash) = &app.status {
-        let style = Style::default().fg(if flash.error { theme.error } else { theme.accent });
+        let style = Style::default().fg(if flash.error {
+            theme.error
+        } else {
+            theme.accent
+        });
         Line::from(Span::styled(flash.text.clone(), style))
     } else {
         Line::from(vec![
-            Span::styled("1..9 toggle  ", Style::default().fg(theme.muted)),
+            Span::styled("panel keys toggle  ", Style::default().fg(theme.muted)),
             Span::styled("0 layout  ", Style::default().fg(theme.muted)),
             Span::styled("Tab: cycle  ", Style::default().fg(theme.muted)),
             Span::styled("d: device  ", Style::default().fg(theme.muted)),
             Span::styled("w: project  ", Style::default().fg(theme.muted)),
             Span::styled("e: emulator  ", Style::default().fg(theme.muted)),
+            Span::styled("A: app  ", Style::default().fg(theme.muted)),
+            Span::styled("B: data  ", Style::default().fg(theme.muted)),
+            Span::styled("U: intents  ", Style::default().fg(theme.muted)),
             Span::styled("F: fps  ", Style::default().fg(theme.muted)),
             Span::styled("z: zoom  ", Style::default().fg(theme.muted)),
             Span::styled("/: filter  ", Style::default().fg(theme.muted)),
@@ -338,7 +390,7 @@ fn render_footer(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
 
 fn render_help(f: &mut Frame, area: Rect, theme: &Theme) {
     let width = area.width.min(60);
-    let height = area.height.min(44);
+    let height = area.height.min(56);
     let rect = Rect {
         x: area.x + (area.width - width) / 2,
         y: area.y + (area.height - height) / 2,
@@ -356,15 +408,18 @@ fn render_help(f: &mut Frame, area: Rect, theme: &Theme) {
     let inner = block.inner(rect);
     f.render_widget(block, rect);
 
-    let mut lines = vec![
-        Line::from(Span::styled(
-            "Panel control",
-            Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
-        )),
-    ];
+    let mut lines = vec![Line::from(Span::styled(
+        "Panel control",
+        Style::default()
+            .fg(theme.accent)
+            .add_modifier(Modifier::BOLD),
+    ))];
     for p in PANELS {
         lines.push(Line::from(vec![
-            Span::styled(format!("  {}", p.toggle_key), Style::default().fg(theme.warn)),
+            Span::styled(
+                format!("  {}", p.toggle_key),
+                Style::default().fg(theme.warn),
+            ),
             Span::raw("  toggle  "),
             Span::styled(format!("{}", p.focus_key), Style::default().fg(theme.warn)),
             Span::raw(format!("  focus {}", p.name)),
@@ -373,7 +428,9 @@ fn render_help(f: &mut Frame, area: Rect, theme: &Theme) {
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
         "Logcat",
-        Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+        Style::default()
+            .fg(theme.accent)
+            .add_modifier(Modifier::BOLD),
     )));
     lines.push(Line::from("  /  enter filter mode (tag/message substring)"));
     lines.push(Line::from("  R  toggle regex filter"));
@@ -387,7 +444,9 @@ fn render_help(f: &mut Frame, area: Rect, theme: &Theme) {
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
         "Issues",
-        Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+        Style::default()
+            .fg(theme.accent)
+            .add_modifier(Modifier::BOLD),
     )));
     lines.push(Line::from("  j/k or ↓/↑  navigate (or scroll detail)"));
     lines.push(Line::from("  Enter  open/close stacktrace detail"));
@@ -396,13 +455,17 @@ fn render_help(f: &mut Frame, area: Rect, theme: &Theme) {
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
         "Processes",
-        Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+        Style::default()
+            .fg(theme.accent)
+            .add_modifier(Modifier::BOLD),
     )));
     lines.push(Line::from("  j/k or ↓/↑  navigate"));
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
         "Gradle",
-        Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+        Style::default()
+            .fg(theme.accent)
+            .add_modifier(Modifier::BOLD),
     )));
     lines.push(Line::from("  r  run default task"));
     lines.push(Line::from("  j/k  navigate host processes"));
@@ -410,7 +473,9 @@ fn render_help(f: &mut Frame, area: Rect, theme: &Theme) {
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
         "Files",
-        Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+        Style::default()
+            .fg(theme.accent)
+            .add_modifier(Modifier::BOLD),
     )));
     lines.push(Line::from("  j/k or ↓/↑  navigate tree"));
     lines.push(Line::from("  Enter/→  expand dir or open file"));
@@ -419,8 +484,46 @@ fn render_help(f: &mut Frame, area: Rect, theme: &Theme) {
     lines.push(Line::from("  r  refresh"));
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
+        "App",
+        Style::default()
+            .fg(theme.accent)
+            .add_modifier(Modifier::BOLD),
+    )));
+    lines.push(Line::from("  A / a  toggle/focus app control"));
+    lines.push(Line::from("  P  set target package"));
+    lines.push(Line::from("  j/k  choose action   Enter run"));
+    lines.push(Line::from("  !  confirm destructive action"));
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        "Data",
+        Style::default()
+            .fg(theme.accent)
+            .add_modifier(Modifier::BOLD),
+    )));
+    lines.push(Line::from("  B / b  toggle/focus app data browser"));
+    lines.push(Line::from("  P  set target package   r refresh"));
+    lines.push(Line::from(
+        "  Enter open dir/file   ←/Backspace close or parent",
+    ));
+    lines.push(Line::from("  Tab  switch to preview pane"));
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        "Intents",
+        Style::default()
+            .fg(theme.accent)
+            .add_modifier(Modifier::BOLD),
+    )));
+    lines.push(Line::from("  U / u  toggle/focus intent runner"));
+    lines.push(Line::from("  /  edit deep link URL   Enter launch"));
+    lines.push(Line::from(
+        "  P  set target package   T target/resolver mode",
+    ));
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
         "Shell",
-        Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+        Style::default()
+            .fg(theme.accent)
+            .add_modifier(Modifier::BOLD),
     )));
     lines.push(Line::from("  s / 9  focus → auto `adb shell`"));
     lines.push(Line::from("  Ctrl+\\  defocus (cycle to next panel)"));
@@ -428,30 +531,44 @@ fn render_help(f: &mut Frame, area: Rect, theme: &Theme) {
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
         "Focus",
-        Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+        Style::default()
+            .fg(theme.accent)
+            .add_modifier(Modifier::BOLD),
     )));
-    lines.push(Line::from("  Tab / Shift+Tab  cycle focus across visible panels"));
+    lines.push(Line::from(
+        "  Tab / Shift+Tab  cycle focus across visible panels",
+    ));
     lines.push(Line::from("  z  zoom focused panel (Esc to close)"));
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
         "Device",
-        Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+        Style::default()
+            .fg(theme.accent)
+            .add_modifier(Modifier::BOLD),
     )));
     lines.push(Line::from("  d  open device selector"));
     lines.push(Line::from("  8 / v  devices panel (j/k + Enter to switch)"));
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
         "Project",
-        Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+        Style::default()
+            .fg(theme.accent)
+            .add_modifier(Modifier::BOLD),
     )));
-    lines.push(Line::from("  w  pick Android project (scans ~/Documents, sorted by mtime)"));
+    lines.push(Line::from(
+        "  w  pick Android project (scans ~/Documents, sorted by mtime)",
+    ));
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
         "Layout",
-        Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+        Style::default()
+            .fg(theme.accent)
+            .add_modifier(Modifier::BOLD),
     )));
     lines.push(Line::from("  0  open grid layout editor"));
-    lines.push(Line::from("  In editor: h/j/k/l move  v select  1..9/F assign"));
+    lines.push(Line::from(
+        "  In editor: h/j/k/l move  v select  1..9/A/B/U/F assign",
+    ));
     lines.push(Line::from("  x delete  c clear  [ ] cols  - = rows"));
     lines.push(Line::from("  Enter save  Esc cancel"));
     lines.push(Line::from(""));
@@ -470,7 +587,9 @@ fn shorten_serial(s: &str) -> String {
 }
 
 fn render_project_picker(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
-    let Some(picker) = &app.project_picker else { return };
+    let Some(picker) = &app.project_picker else {
+        return;
+    };
     let width = area.width.min(80);
     let rows_needed = picker.entries.len().max(1) as u16 + 5;
     let height = rows_needed.min(area.height);
@@ -516,7 +635,10 @@ fn render_project_picker(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
                 .map(|n| n.to_string_lossy().into_owned())
                 .unwrap_or_else(|| e.display.clone());
             let row_style = if i == picker.selected {
-                Style::default().fg(theme.bg).bg(theme.accent).add_modifier(Modifier::BOLD)
+                Style::default()
+                    .fg(theme.bg)
+                    .bg(theme.accent)
+                    .add_modifier(Modifier::BOLD)
             } else {
                 Style::default().fg(theme.fg)
             };
@@ -532,8 +654,14 @@ fn render_project_picker(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
             };
             lines.push(Line::from(vec![
                 Span::styled(format!(" {} ", marker), row_style),
-                Span::styled(format!("{:<width$}", truncate(&name, name_w), width = name_w), row_style),
-                Span::styled(format!(" {:<width$} ", e.modified_label(), width = date_w), date_style),
+                Span::styled(
+                    format!("{:<width$}", truncate(&name, name_w), width = name_w),
+                    row_style,
+                ),
+                Span::styled(
+                    format!(" {:<width$} ", e.modified_label(), width = date_w),
+                    date_style,
+                ),
                 Span::styled(truncate(&e.display, 100), path_style),
             ]));
         }
@@ -575,7 +703,9 @@ fn render_zoom(f: &mut Frame, area: Rect, id: PanelId, app: &App, theme: &Theme)
 }
 
 fn render_emulator_picker(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
-    let Some(picker) = &app.emulator_picker else { return };
+    let Some(picker) = &app.emulator_picker else {
+        return;
+    };
     let width = area.width.min(60);
     let rows_needed = picker.entries.len().max(1) as u16 + 5;
     let height = rows_needed.min(area.height);
@@ -610,7 +740,10 @@ fn render_emulator_picker(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     } else {
         for (i, name) in picker.entries.iter().enumerate() {
             let row_style = if i == picker.selected {
-                Style::default().fg(theme.bg).bg(theme.accent).add_modifier(Modifier::BOLD)
+                Style::default()
+                    .fg(theme.bg)
+                    .bg(theme.accent)
+                    .add_modifier(Modifier::BOLD)
             } else {
                 Style::default().fg(theme.fg)
             };
@@ -663,9 +796,16 @@ fn render_device_selector(f: &mut Frame, area: Rect, app: &App, theme: &Theme, s
     for (i, d) in app.devices.iter().enumerate() {
         let is_current = Some(&d.serial) == current.as_ref();
         let marker = if is_current { "●" } else { " " };
-        let state_color = if d.is_ready() { theme.success } else { theme.warn };
+        let state_color = if d.is_ready() {
+            theme.success
+        } else {
+            theme.warn
+        };
         let row_style = if i == selected {
-            Style::default().fg(theme.bg).bg(theme.accent).add_modifier(Modifier::BOLD)
+            Style::default()
+                .fg(theme.bg)
+                .bg(theme.accent)
+                .add_modifier(Modifier::BOLD)
         } else {
             Style::default().fg(theme.fg)
         };
