@@ -12,7 +12,7 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   RUST_TOOLCHAIN: 1.88.0
-  GRADLE_VERSION: 8.10
+  GRADLE_VERSION: "8.10"
 
 jobs:
   build:
