@@ -27,6 +27,8 @@ mod monitor;
 mod monitor_ui;
 mod network_ui;
 mod panel;
+mod perf;
+mod perf_ui;
 mod processes;
 mod processes_ui;
 mod project_picker;
@@ -89,6 +91,7 @@ fn main() -> Result<()> {
     let adb_available = adb::is_available();
     let device = adb::new_handle();
     let fps_package = fps::new_package_handle();
+    let perf_package = perf::new_package_handle();
     let app = App::new(
         cfg,
         state,
@@ -96,6 +99,7 @@ fn main() -> Result<()> {
         adb_available,
         device.clone(),
         fps_package.clone(),
+        perf_package.clone(),
     );
 
     let dispatcher = DispatchContext::new();
@@ -107,6 +111,7 @@ fn main() -> Result<()> {
         processes::spawn_poller(device.clone(), dispatcher.tx.clone());
         adb::devices::spawn_poller(dispatcher.tx.clone());
         fps::spawn_poller(device.clone(), fps_package, dispatcher.tx.clone());
+        perf::spawn_poller(device.clone(), perf_package, dispatcher.tx.clone());
     } else {
         let _ = dispatcher.tx.send(Event::Status {
             text: "adb not found in PATH — logcat/monitor disabled".to_string(),
@@ -184,6 +189,7 @@ fn run_loop(
                     }
                 }
                 Event::Fps(sample) => app.fps.push(sample),
+                Event::Perf(sample) => app.perf.push(sample),
                 Event::AppControl(result) => {
                     app.app_control.running = false;
                     app.app_control.pending_confirm = None;
@@ -259,6 +265,9 @@ fn handle_key(
         }
         InputMode::FpsPackage => {
             return handle_fps_package_key(app, key);
+        }
+        InputMode::PerfPackage => {
+            return handle_perf_package_key(app, key);
         }
         InputMode::TargetPackage => {
             return handle_target_package_key(app, key);
@@ -405,6 +414,14 @@ fn handle_key(
         KeyCode::Char('X') if app.focus == PanelId::Fps => {
             app.fps.set_package(None);
             app.flash("fps package cleared".to_string(), false);
+        }
+        KeyCode::Char('P') if app.focus == PanelId::Perf => {
+            app.perf_package_input = app.perf.current_package().unwrap_or_default();
+            app.input_mode = InputMode::PerfPackage;
+        }
+        KeyCode::Char('X') if app.focus == PanelId::Perf => {
+            app.perf.set_package(None);
+            app.flash("perf package cleared".to_string(), false);
         }
         KeyCode::Char('/') if app.focus == PanelId::Logcat => {
             app.input_mode = InputMode::LogcatFilter;
@@ -909,6 +926,34 @@ fn handle_fps_package_key(app: &mut App, key: KeyEvent) {
         }
         KeyCode::Char(c) => {
             app.fps_package_input.push(c);
+        }
+        _ => {}
+    }
+}
+
+fn handle_perf_package_key(app: &mut App, key: KeyEvent) {
+    match key.code {
+        KeyCode::Esc => {
+            app.input_mode = InputMode::Normal;
+            app.perf_package_input.clear();
+        }
+        KeyCode::Enter => {
+            let pkg = app.perf_package_input.trim().to_string();
+            app.input_mode = InputMode::Normal;
+            app.perf_package_input.clear();
+            if pkg.is_empty() {
+                app.perf.set_package(None);
+                app.flash("perf package cleared".to_string(), false);
+            } else {
+                app.perf.set_package(Some(pkg.clone()));
+                app.flash(format!("perf: tracking {}", pkg), false);
+            }
+        }
+        KeyCode::Backspace => {
+            app.perf_package_input.pop();
+        }
+        KeyCode::Char(c) => {
+            app.perf_package_input.push(c);
         }
         _ => {}
     }

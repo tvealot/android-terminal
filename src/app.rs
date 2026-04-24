@@ -12,6 +12,7 @@ use crate::files::FilesState;
 use crate::fps::{self, FpsState};
 use crate::layout::{LayoutEditor, LayoutGrid};
 use crate::panel::{def, Feature, PanelId, PANELS};
+use crate::perf::{self, PerfState};
 use crate::project_picker::ProjectPicker;
 
 pub struct App {
@@ -32,6 +33,7 @@ pub struct App {
     pub files: FilesState,
     pub shell: crate::shell::ShellState,
     pub fps: FpsState,
+    pub perf: PerfState,
     pub app_control: crate::app_control::AppControlState,
     pub app_data: crate::app_data::AppDataState,
     pub intents: crate::intents::IntentsState,
@@ -42,6 +44,7 @@ pub struct App {
     pub device_selector: Option<usize>,
     pub package_input: String,
     pub fps_package_input: String,
+    pub perf_package_input: String,
     pub target_package_input: String,
     pub deep_link_input: String,
     pub pending_g: bool,
@@ -60,6 +63,7 @@ pub enum InputMode {
     LogcatFilter,
     LogcatPackage,
     FpsPackage,
+    PerfPackage,
     TargetPackage,
     DeepLinkUrl,
     LayoutEdit,
@@ -79,6 +83,7 @@ impl App {
         adb_available: bool,
         device: DeviceHandle,
         fps_package: fps::FpsPackageHandle,
+        perf_package: perf::PerfPackageHandle,
     ) -> Self {
         let mut screens = state.screens;
         if screens.is_empty() {
@@ -126,6 +131,7 @@ impl App {
             files,
             shell: crate::shell::ShellState::default(),
             fps: FpsState::new(fps_package),
+            perf: PerfState::new(perf_package),
             app_control: crate::app_control::AppControlState::default(),
             app_data: crate::app_data::AppDataState::default(),
             intents: crate::intents::IntentsState::default(),
@@ -136,6 +142,7 @@ impl App {
             device_selector: None,
             package_input: String::new(),
             fps_package_input: String::new(),
+            perf_package_input: String::new(),
             target_package_input: String::new(),
             deep_link_input: String::new(),
             pending_g: false,

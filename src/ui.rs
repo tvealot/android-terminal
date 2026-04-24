@@ -10,7 +10,7 @@ use crate::panel::{def, PanelId, PANELS};
 use crate::theme::Theme;
 use crate::{
     app_control_ui, app_data_ui, devices_ui, files_ui, fps_ui, gradle_ui, intents_ui, issues_ui,
-    logcat_ui, monitor_ui, network_ui, processes_ui, shell_ui,
+    logcat_ui, monitor_ui, network_ui, perf_ui, processes_ui, shell_ui,
 };
 
 pub fn render(f: &mut Frame, app: &App, theme: &Theme) {
@@ -241,7 +241,7 @@ fn render_layout_editor(f: &mut Frame, area: Rect, editor: &LayoutEditor, theme:
         Span::raw("move  "),
         Span::styled("v ", Style::default().fg(theme.warn)),
         Span::raw("toggle selection  "),
-        Span::styled("1..9/A/B/U/F ", Style::default().fg(theme.warn)),
+        Span::styled("1..9/A/B/U/F/H ", Style::default().fg(theme.warn)),
         Span::raw("assign panel"),
     ]));
     lines.push(Line::from(vec![
@@ -284,6 +284,7 @@ fn render_panel(f: &mut Frame, area: Rect, id: PanelId, app: &App, theme: &Theme
         PanelId::AppData => app_data_ui::render(f, area, app, theme, focused),
         PanelId::Intents => intents_ui::render(f, area, app, theme, focused),
         PanelId::Fps => fps_ui::render(f, area, app, theme, focused),
+        PanelId::Perf => perf_ui::render(f, area, app, theme, focused),
     }
 }
 
@@ -324,6 +325,24 @@ fn render_footer(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
                     .add_modifier(Modifier::BOLD),
             ),
             Span::styled(app.fps_package_input.clone(), Style::default().fg(theme.fg)),
+            Span::styled("_  ", Style::default().fg(theme.warn)),
+            Span::styled(
+                "Enter: apply  Esc: cancel  (empty = clear)",
+                Style::default().fg(theme.muted),
+            ),
+        ])
+    } else if app.input_mode == crate::app::InputMode::PerfPackage {
+        Line::from(vec![
+            Span::styled(
+                "perf package: ",
+                Style::default()
+                    .fg(theme.accent)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                app.perf_package_input.clone(),
+                Style::default().fg(theme.fg),
+            ),
             Span::styled("_  ", Style::default().fg(theme.warn)),
             Span::styled(
                 "Enter: apply  Esc: cancel  (empty = clear)",
@@ -383,6 +402,7 @@ fn render_footer(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
             Span::styled("B: data  ", Style::default().fg(theme.muted)),
             Span::styled("U: intents  ", Style::default().fg(theme.muted)),
             Span::styled("F: fps  ", Style::default().fg(theme.muted)),
+            Span::styled("H: perf  ", Style::default().fg(theme.muted)),
             Span::styled("z: zoom  ", Style::default().fg(theme.muted)),
             Span::styled("/: filter  ", Style::default().fg(theme.muted)),
             Span::styled("P: package  ", Style::default().fg(theme.muted)),
@@ -537,6 +557,16 @@ fn render_help(f: &mut Frame, area: Rect, theme: &Theme) {
     lines.push(Line::from("  All keys route to the PTY while focused"));
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
+        "Perf",
+        Style::default()
+            .fg(theme.accent)
+            .add_modifier(Modifier::BOLD),
+    )));
+    lines.push(Line::from("  H  toggle perf panel"));
+    lines.push(Line::from("  P  set package   X clear"));
+    lines.push(Line::from("  meminfo + CPU + gfxinfo jank + GC markers"));
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
         "Focus",
         Style::default()
             .fg(theme.accent)
@@ -578,7 +608,7 @@ fn render_help(f: &mut Frame, area: Rect, theme: &Theme) {
     ));
     lines.push(Line::from("  0  open grid layout editor"));
     lines.push(Line::from(
-        "  In editor: h/j/k/l move  v select  1..9/A/B/U/F assign",
+        "  In editor: h/j/k/l move  v select  1..9/A/B/U/F/H assign",
     ));
     lines.push(Line::from("  x delete  c clear  [ ] cols  - = rows"));
     lines.push(Line::from("  Enter save  Esc cancel"));

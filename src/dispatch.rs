@@ -17,6 +17,7 @@ pub enum Event {
     Projects(Vec<ProjectEntry>),
     Emulators(Vec<String>),
     Fps(crate::fps::FpsSample),
+    Perf(crate::perf::PerfSample),
     AppControl(crate::app_control::AppActionResult),
     AppData(crate::app_data::AppDataEvent),
     Intent(crate::intents::IntentResult),

@@ -86,7 +86,7 @@ impl Default for ScreenState {
         Self {
             visible: PANELS
                 .iter()
-                .filter(|p| p.id != PanelId::Fps)
+                .filter(|p| !matches!(p.id, PanelId::Fps | PanelId::Perf))
                 .map(|p| p.id)
                 .collect(),
             focus: PANELS[0].id,

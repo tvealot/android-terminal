@@ -16,6 +16,7 @@ pub enum PanelId {
     AppData,
     Intents,
     Fps,
+    Perf,
 }
 
 #[allow(dead_code)]
@@ -35,6 +36,7 @@ impl PanelId {
             PanelId::AppData => "data",
             PanelId::Intents => "intents",
             PanelId::Fps => "fps",
+            PanelId::Perf => "perf",
         }
     }
 
@@ -71,6 +73,7 @@ pub const PANELS: &[PanelDef] = &[
     PanelDef { id: PanelId::AppData,    name: "data",      toggle_key: 'B', focus_key: 'b', requires: Feature::None },
     PanelDef { id: PanelId::Intents,    name: "intents",   toggle_key: 'U', focus_key: 'u', requires: Feature::None },
     PanelDef { id: PanelId::Fps,        name: "fps",       toggle_key: 'F', focus_key: 'F', requires: Feature::None },
+    PanelDef { id: PanelId::Perf,       name: "perf",      toggle_key: 'H', focus_key: 'H', requires: Feature::None },
 ];
 
 pub fn by_toggle_key(c: char) -> Option<PanelId> {
