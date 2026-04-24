@@ -3,7 +3,10 @@ use std::path::PathBuf;
 
 use crate::adb::devices::DeviceEntry;
 use crate::adb::DeviceHandle;
-use crate::config::{save_state, update_android_package, update_project_dir, Config, State};
+use crate::config::{
+    save_state, update_android_package, update_project_dir, Config, ScreenState, State,
+    SCREEN_COUNT,
+};
 use crate::emulator_picker::EmulatorPicker;
 use crate::files::FilesState;
 use crate::fps::{self, FpsState};
@@ -43,6 +46,8 @@ pub struct App {
     pub deep_link_input: String,
     pub pending_g: bool,
     pub layout: Option<LayoutGrid>,
+    pub screens: Vec<ScreenState>,
+    pub active_screen: usize,
     pub layout_editor: Option<LayoutEditor>,
     pub project_picker: Option<ProjectPicker>,
     pub emulator_picker: Option<EmulatorPicker>,
@@ -75,30 +80,30 @@ impl App {
         device: DeviceHandle,
         fps_package: fps::FpsPackageHandle,
     ) -> Self {
-        let mut visible: HashSet<PanelId> = state.visible.into_iter().collect();
-        if !jvm_available {
-            visible.remove(&PanelId::Gradle);
+        let mut screens = state.screens;
+        if screens.is_empty() {
+            screens.push(ScreenState {
+                visible: state.visible,
+                focus: state.focus,
+                layout: state.layout,
+            });
         }
-        let layout = state.layout.and_then(|g| {
-            if g.cells.is_empty() {
-                None
-            } else {
-                Some(g)
-            }
-        });
-        let focus_candidates: Vec<PanelId> = if let Some(g) = &layout {
-            g.visible_panels()
-        } else {
-            visible.iter().copied().collect()
-        };
-        let focus = if focus_candidates.contains(&state.focus) {
-            state.focus
-        } else {
-            focus_candidates
-                .into_iter()
-                .next()
-                .unwrap_or(PANELS[0].id)
-        };
+        while screens.len() < SCREEN_COUNT {
+            screens.push(ScreenState::default());
+        }
+        screens.truncate(SCREEN_COUNT);
+        let screens: Vec<ScreenState> = screens
+            .into_iter()
+            .map(|screen| normalize_screen(screen, jvm_available))
+            .collect();
+        let active_screen = state.active_screen.min(screens.len().saturating_sub(1));
+        let active = screens
+            .get(active_screen)
+            .cloned()
+            .unwrap_or_else(ScreenState::default);
+        let visible: HashSet<PanelId> = active.visible.into_iter().collect();
+        let focus = active.focus;
+        let layout = active.layout;
 
         let files = FilesState::new(config.gradle.project_dir.clone());
         let target_package = config.android.package.clone();
@@ -135,6 +140,8 @@ impl App {
             deep_link_input: String::new(),
             pending_g: false,
             layout,
+            screens,
+            active_screen,
             layout_editor: None,
             project_picker: None,
             emulator_picker: None,
@@ -293,8 +300,72 @@ impl App {
         self.input_mode = InputMode::Normal;
     }
 
+    pub fn switch_screen(&mut self, index: usize) {
+        if index >= self.screens.len() {
+            return;
+        }
+        if index == self.active_screen {
+            self.flash(format!("screen {}", index + 1), false);
+            return;
+        }
+        self.save_active_screen_snapshot();
+        self.active_screen = index;
+
+        let screen = self.screens[index].clone();
+        self.visible = screen.visible.into_iter().collect();
+        self.focus = screen.focus;
+        self.layout = screen.layout;
+        self.zoom = None;
+        self.layout_editor = None;
+        self.input_mode = InputMode::Normal;
+        self.persist();
+        self.flash(format!("screen {}", index + 1), false);
+    }
+
+    pub fn cycle_screen(&mut self, forward: bool) {
+        if self.screens.len() < 2 {
+            return;
+        }
+        let len = self.screens.len();
+        let next = if forward {
+            (self.active_screen + 1) % len
+        } else {
+            (self.active_screen + len - 1) % len
+        };
+        self.switch_screen(next);
+    }
+
+    pub fn screen_label(&self) -> String {
+        format!("{}/{}", self.active_screen + 1, self.screens.len())
+    }
+
     fn persist(&self) {
+        let mut screens = self.screens.clone();
+        if self.active_screen < screens.len() {
+            screens[self.active_screen] = self.current_screen_snapshot();
+        }
+        let current = screens
+            .get(self.active_screen)
+            .cloned()
+            .unwrap_or_else(|| self.current_screen_snapshot());
         let state = State {
+            visible: current.visible.clone(),
+            focus: current.focus,
+            layout: current.layout.clone(),
+            screens,
+            active_screen: self.active_screen,
+        };
+        let _ = save_state(&state);
+    }
+
+    fn save_active_screen_snapshot(&mut self) {
+        if self.active_screen < self.screens.len() {
+            self.screens[self.active_screen] = self.current_screen_snapshot();
+        }
+    }
+
+    fn current_screen_snapshot(&self) -> ScreenState {
+        ScreenState {
             visible: if self.layout.is_some() {
                 PANELS
                     .iter()
@@ -306,7 +377,37 @@ impl App {
             },
             focus: self.focus,
             layout: self.layout.clone(),
-        };
-        let _ = save_state(&state);
+        }
     }
+}
+
+fn normalize_screen(mut screen: ScreenState, jvm_available: bool) -> ScreenState {
+    if !jvm_available {
+        screen.visible.retain(|id| *id != PanelId::Gradle);
+        if let Some(grid) = screen.layout.as_mut() {
+            grid.cells.retain(|cell| cell.panel != PanelId::Gradle);
+        }
+    }
+    if let Some(grid) = screen.layout.as_ref() {
+        if grid.cells.is_empty() || grid.cols == 0 || grid.rows == 0 {
+            screen.layout = None;
+        }
+    }
+    if let Some(grid) = &screen.layout {
+        for panel in grid.visible_panels() {
+            screen.visible.push(panel);
+        }
+    }
+    let mut seen = HashSet::new();
+    screen.visible.retain(|id| seen.insert(*id));
+
+    let focus_candidates = if let Some(grid) = &screen.layout {
+        grid.visible_panels()
+    } else {
+        screen.visible.clone()
+    };
+    if !focus_candidates.contains(&screen.focus) {
+        screen.focus = focus_candidates.into_iter().next().unwrap_or(PANELS[0].id);
+    }
+    screen
 }

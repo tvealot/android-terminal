@@ -286,6 +286,30 @@ fn handle_key(
         return handle_device_selector(app, key, idx, dispatcher, runtime);
     }
 
+    if key.modifiers.contains(KeyModifiers::ALT) {
+        if let KeyCode::Char(c) = key.code {
+            if let Some(n) = c.to_digit(10) {
+                let index = n as usize;
+                if (1..=app.screens.len()).contains(&index) {
+                    app.switch_screen(index - 1);
+                    return;
+                }
+            }
+        }
+    }
+
+    match key.code {
+        KeyCode::Char('[') => {
+            app.cycle_screen(false);
+            return;
+        }
+        KeyCode::Char(']') => {
+            app.cycle_screen(true);
+            return;
+        }
+        _ => {}
+    }
+
     if let KeyCode::Char(c) = key.code {
         if c == '0' {
             app.open_layout_editor();

@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 use crate::layout::LayoutGrid;
 use crate::panel::{PanelId, PANELS};
 
+pub const SCREEN_COUNT: usize = 4;
+
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct Config {
     #[serde(default)]
@@ -52,9 +54,34 @@ pub struct State {
     pub focus: PanelId,
     #[serde(default)]
     pub layout: Option<LayoutGrid>,
+    #[serde(default)]
+    pub screens: Vec<ScreenState>,
+    #[serde(default)]
+    pub active_screen: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScreenState {
+    pub visible: Vec<PanelId>,
+    pub focus: PanelId,
+    #[serde(default)]
+    pub layout: Option<LayoutGrid>,
 }
 
 impl Default for State {
+    fn default() -> Self {
+        let screen = ScreenState::default();
+        Self {
+            visible: screen.visible.clone(),
+            focus: screen.focus,
+            layout: None,
+            screens: vec![screen; SCREEN_COUNT],
+            active_screen: 0,
+        }
+    }
+}
+
+impl Default for ScreenState {
     fn default() -> Self {
         Self {
             visible: PANELS

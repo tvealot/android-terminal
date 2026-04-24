@@ -156,6 +156,8 @@ on resize.
 | Key          | Action                                            |
 | ------------ | ------------------------------------------------- |
 | `1..9`, `A`, `B`, `U`, `F` | toggle panel visibility             |
+| `[` / `]`    | switch previous / next layout screen; each screen keeps its own panels, focus, and grid layout |
+| `Alt+1..4`   | switch directly to layout screen 1..4, if your keyboard has Alt |
 | `0`          | open grid layout editor                           |
 | `l/m/g/p/i/f/n/v/s/a/b/u/F` | focus panel                   |
 | `Tab` / `Shift+Tab` | cycle focus across visible panels          |
@@ -216,6 +218,10 @@ on resize.
 
 ### Layout editor (after `0`)
 
+Use `[` / `]` to switch between independent layout screens. `Alt+1..4` also
+switches directly to a screen when available. Editing with `0` updates the
+currently active screen only.
+
 | Key | Action |
 | --- | ------ |
 | `h/j/k/l` | move cursor |
@@ -228,7 +234,8 @@ on resize.
 | `Enter` | save layout |
 | `Esc` | cancel |
 
-Panel visibility, focus, and grid layout persist in `~/.config/droidscope/state.json`.
+Panel visibility, focus, active screen, and per-screen grid layouts persist in
+`~/.config/droidscope/state.json`.
 
 ## How the Gradle panel works
 

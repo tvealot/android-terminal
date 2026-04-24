@@ -74,6 +74,12 @@ fn render_header(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         format!("{} ", dev_label),
         Style::default().fg(theme.muted),
     ));
+    spans.push(Span::styled(
+        format!("[screen {}] ", app.screen_label()),
+        Style::default()
+            .fg(theme.accent)
+            .add_modifier(Modifier::BOLD),
+    ));
     for p in PANELS {
         let visible = app.visible.contains(&p.id);
         let focused = app.focus == p.id && visible;
@@ -106,7 +112,7 @@ fn render_body(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
                 Style::default().fg(theme.warn).add_modifier(Modifier::BOLD),
             )),
             Line::from(""),
-            Line::from("Press panel toggle keys, 0 for layout editor, ? for help, q to quit."),
+            Line::from("Press panel toggle keys, [/] for screens, 0 for layout editor, ? for help, q to quit."),
         ])
         .wrap(Wrap { trim: false });
         f.render_widget(help, area);
@@ -367,6 +373,7 @@ fn render_footer(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     } else {
         Line::from(vec![
             Span::styled("panel keys toggle  ", Style::default().fg(theme.muted)),
+            Span::styled("[/] screens  ", Style::default().fg(theme.muted)),
             Span::styled("0 layout  ", Style::default().fg(theme.muted)),
             Span::styled("Tab: cycle  ", Style::default().fg(theme.muted)),
             Span::styled("d: device  ", Style::default().fg(theme.muted)),
@@ -538,6 +545,7 @@ fn render_help(f: &mut Frame, area: Rect, theme: &Theme) {
     lines.push(Line::from(
         "  Tab / Shift+Tab  cycle focus across visible panels",
     ));
+    lines.push(Line::from("  [ / ]  previous / next layout screen"));
     lines.push(Line::from("  z  zoom focused panel (Esc to close)"));
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
@@ -565,6 +573,9 @@ fn render_help(f: &mut Frame, area: Rect, theme: &Theme) {
             .fg(theme.accent)
             .add_modifier(Modifier::BOLD),
     )));
+    lines.push(Line::from(
+        "  [ / ]  switch screens; each screen keeps its own panels/focus/layout",
+    ));
     lines.push(Line::from("  0  open grid layout editor"));
     lines.push(Line::from(
         "  In editor: h/j/k/l move  v select  1..9/A/B/U/F assign",
