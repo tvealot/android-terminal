@@ -164,6 +164,29 @@ impl IssuesState {
         self.expanded = None;
         self.detail_scroll = 0;
     }
+
+    pub fn selected_stacktrace(&self) -> Option<String> {
+        let idx = self.expanded.unwrap_or(self.selected);
+        let issue = self.issues.get(idx)?;
+        if issue.buffer.is_empty() {
+            return None;
+        }
+        let header = format!(
+            "{} · pid={} · {} · {}",
+            issue.kind.label(),
+            issue.pid,
+            issue.tag,
+            issue.timestamp
+        );
+        let mut out = String::with_capacity(header.len() + 2 + issue.buffer.iter().map(|s| s.len() + 1).sum::<usize>());
+        out.push_str(&header);
+        out.push('\n');
+        for line in &issue.buffer {
+            out.push_str(line);
+            out.push('\n');
+        }
+        Some(out)
+    }
 }
 
 fn format_line(line: &LogLine) -> String {

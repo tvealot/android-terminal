@@ -1,5 +1,6 @@
 mod adb;
 mod app;
+mod clipboard;
 mod config;
 mod devices_ui;
 mod dispatch;
@@ -33,8 +34,7 @@ use std::time::Duration;
 
 use color_eyre::eyre::{Result, WrapErr};
 use crossterm::event::{
-    self, DisableMouseCapture, EnableMouseCapture, Event as CEvent, KeyCode, KeyEvent,
-    KeyEventKind, KeyModifiers,
+    self, Event as CEvent, KeyCode, KeyEvent, KeyEventKind, KeyModifiers,
 };
 use crossterm::execute;
 use crossterm::terminal::{
@@ -117,19 +117,14 @@ fn main() -> Result<()> {
 fn setup_terminal() -> Result<Terminal<CrosstermBackend<Stdout>>> {
     enable_raw_mode().wrap_err("enable_raw_mode")?;
     let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen, EnableMouseCapture).wrap_err("enter alt screen")?;
+    execute!(stdout, EnterAlternateScreen).wrap_err("enter alt screen")?;
     let backend = CrosstermBackend::new(stdout);
     Terminal::new(backend).wrap_err("terminal init")
 }
 
 fn restore_terminal(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<()> {
     disable_raw_mode().ok();
-    execute!(
-        terminal.backend_mut(),
-        LeaveAlternateScreen,
-        DisableMouseCapture
-    )
-    .ok();
+    execute!(terminal.backend_mut(), LeaveAlternateScreen).ok();
     terminal.show_cursor().ok();
     Ok(())
 }
@@ -399,6 +394,9 @@ fn handle_key(
         KeyCode::Char('C') if app.focus == PanelId::Issues => {
             app.issues.clear();
             app.flash("issues cleared".to_string(), false);
+        }
+        KeyCode::Char('y') if app.focus == PanelId::Issues => {
+            copy_selected_stacktrace(app);
         }
         KeyCode::Tab => {
             app.cycle_focus(true);
@@ -836,6 +834,18 @@ fn handle_fps_package_key(app: &mut App, key: KeyEvent) {
             app.fps_package_input.push(c);
         }
         _ => {}
+    }
+}
+
+fn copy_selected_stacktrace(app: &mut App) {
+    let Some(text) = app.issues.selected_stacktrace() else {
+        app.flash("no stacktrace captured for selection".to_string(), true);
+        return;
+    };
+    let bytes = text.len();
+    match clipboard::copy(&text) {
+        Ok(tool) => app.flash(format!("copied stacktrace ({} bytes via {})", bytes, tool), false),
+        Err(e) => app.flash(format!("copy failed: {}", e), true),
     }
 }
 

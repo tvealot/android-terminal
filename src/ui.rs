@@ -391,6 +391,7 @@ fn render_help(f: &mut Frame, area: Rect, theme: &Theme) {
     )));
     lines.push(Line::from("  j/k or ↓/↑  navigate (or scroll detail)"));
     lines.push(Line::from("  Enter  open/close stacktrace detail"));
+    lines.push(Line::from("  y  copy full stacktrace of selected issue"));
     lines.push(Line::from("  C  clear list"));
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(

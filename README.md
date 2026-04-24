@@ -130,6 +130,11 @@ the selection back to `gradle.project_dir`.
 ./target/release/droidscope
 ```
 
+Text selection: mouse capture is disabled, so terminal-native
+selection + copy works normally (drag to select, ⌘C / right-click
+copy). The embedded shell PTY is the exception — its viewport repaints
+on resize.
+
 ### Global
 
 | Key          | Action                                            |
@@ -168,6 +173,7 @@ the selection back to `gradle.project_dir`.
 | `Tab` | switch tree ↔ detail in files (when preview open) |
 | `r` | refresh files tree |
 | `K` (gradle) | send `SIGTERM` to selected host process |
+| `y` (issues) | copy full stacktrace of selected issue to clipboard |
 | `C` (issues) | clear issues list |
 | `Ctrl+\` (shell) | defocus PTY (cycle to next panel) |
 
