@@ -9,8 +9,8 @@ use crate::layout::{cell_rect, LayoutEditor, LayoutGrid};
 use crate::panel::{def, PanelId, PANELS};
 use crate::theme::Theme;
 use crate::{
-    devices_ui, files_ui, gradle_ui, issues_ui, logcat_ui, monitor_ui, network_ui, processes_ui,
-    shell_ui,
+    devices_ui, files_ui, fps_ui, gradle_ui, issues_ui, logcat_ui, monitor_ui, network_ui,
+    processes_ui, shell_ui,
 };
 
 pub fn render(f: &mut Frame, app: &App, theme: &Theme) {
@@ -42,6 +42,10 @@ pub fn render(f: &mut Frame, app: &App, theme: &Theme) {
 
     if app.project_picker.is_some() {
         render_project_picker(f, area, app, theme);
+    }
+
+    if app.emulator_picker.is_some() {
+        render_emulator_picker(f, area, app, theme);
     }
 }
 
@@ -217,7 +221,7 @@ fn render_layout_editor(f: &mut Frame, area: Rect, editor: &LayoutEditor, theme:
         Span::raw("move  "),
         Span::styled("v ", Style::default().fg(theme.warn)),
         Span::raw("toggle selection  "),
-        Span::styled("1..9 ", Style::default().fg(theme.warn)),
+        Span::styled("1..9/F ", Style::default().fg(theme.warn)),
         Span::raw("assign panel"),
     ]));
     lines.push(Line::from(vec![
@@ -263,6 +267,7 @@ fn render_panel(
         PanelId::Network => network_ui::render(f, area, app, theme, focused),
         PanelId::Devices => devices_ui::render(f, area, app, theme, focused),
         PanelId::Shell => shell_ui::render(f, area, app, theme, focused),
+        PanelId::Fps => fps_ui::render(f, area, app, theme, focused),
     }
 }
 
@@ -290,6 +295,19 @@ fn render_footer(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
                 Style::default().fg(theme.muted),
             ),
         ])
+    } else if app.input_mode == crate::app::InputMode::FpsPackage {
+        Line::from(vec![
+            Span::styled(
+                "fps package: ",
+                Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(app.fps_package_input.clone(), Style::default().fg(theme.fg)),
+            Span::styled("_  ", Style::default().fg(theme.warn)),
+            Span::styled(
+                "Enter: apply  Esc: cancel  (empty = clear)",
+                Style::default().fg(theme.muted),
+            ),
+        ])
     } else if let Some(flash) = &app.status {
         let style = Style::default().fg(if flash.error { theme.error } else { theme.accent });
         Line::from(Span::styled(flash.text.clone(), style))
@@ -300,6 +318,8 @@ fn render_footer(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
             Span::styled("Tab: cycle  ", Style::default().fg(theme.muted)),
             Span::styled("d: device  ", Style::default().fg(theme.muted)),
             Span::styled("w: project  ", Style::default().fg(theme.muted)),
+            Span::styled("e: emulator  ", Style::default().fg(theme.muted)),
+            Span::styled("F: fps  ", Style::default().fg(theme.muted)),
             Span::styled("/: filter  ", Style::default().fg(theme.muted)),
             Span::styled("P: package  ", Style::default().fg(theme.muted)),
             Span::styled("Space: pause  ", Style::default().fg(theme.muted)),
@@ -424,7 +444,7 @@ fn render_help(f: &mut Frame, area: Rect, theme: &Theme) {
         Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
     )));
     lines.push(Line::from("  0  open grid layout editor"));
-    lines.push(Line::from("  In editor: h/j/k/l move  v select  1..9 assign"));
+    lines.push(Line::from("  In editor: h/j/k/l move  v select  1..9/F assign"));
     lines.push(Line::from("  x delete  c clear  [ ] cols  - = rows"));
     lines.push(Line::from("  Enter save  Esc cancel"));
     lines.push(Line::from(""));
@@ -514,6 +534,60 @@ fn render_project_picker(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
         "  Enter: select   j/k: move   Esc: close",
+        Style::default().fg(theme.muted),
+    )));
+    f.render_widget(Paragraph::new(lines), inner);
+}
+
+fn render_emulator_picker(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
+    let Some(picker) = &app.emulator_picker else { return };
+    let width = area.width.min(60);
+    let rows_needed = picker.entries.len().max(1) as u16 + 5;
+    let height = rows_needed.min(area.height);
+    let rect = Rect {
+        x: area.x + (area.width - width) / 2,
+        y: area.y + (area.height - height) / 2,
+        width,
+        height,
+    };
+    f.render_widget(Clear, rect);
+    let block = Block::default()
+        .title(Span::styled(
+            " launch emulator ",
+            Style::default().fg(theme.fg).add_modifier(Modifier::BOLD),
+        ))
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(theme.accent));
+    let inner = block.inner(rect);
+    f.render_widget(block, rect);
+
+    let mut lines: Vec<Line> = Vec::new();
+    if picker.loading {
+        lines.push(Line::from(Span::styled(
+            "  scanning AVDs…",
+            Style::default().fg(theme.muted),
+        )));
+    } else if picker.entries.is_empty() {
+        lines.push(Line::from(Span::styled(
+            "  no AVDs found (check `emulator -list-avds`)",
+            Style::default().fg(theme.muted),
+        )));
+    } else {
+        for (i, name) in picker.entries.iter().enumerate() {
+            let row_style = if i == picker.selected {
+                Style::default().fg(theme.bg).bg(theme.accent).add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(theme.fg)
+            };
+            lines.push(Line::from(vec![
+                Span::styled("  ", row_style),
+                Span::styled(truncate(name, 56), row_style),
+            ]));
+        }
+    }
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        "  Enter: launch   j/k: move   Esc: close",
         Style::default().fg(theme.muted),
     )));
     f.render_widget(Paragraph::new(lines), inner);

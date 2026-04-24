@@ -15,6 +15,8 @@ pub enum Event {
     Processes(Vec<ProcessInfo>),
     Devices(Vec<DeviceEntry>),
     Projects(Vec<ProjectEntry>),
+    Emulators(Vec<String>),
+    Fps(crate::fps::FpsSample),
     Status { text: String, error: bool },
 }
 

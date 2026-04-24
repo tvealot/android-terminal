@@ -3,8 +3,11 @@ mod app;
 mod config;
 mod devices_ui;
 mod dispatch;
+mod emulator_picker;
 mod files;
 mod files_ui;
+mod fps;
+mod fps_ui;
 mod gradle;
 mod gradle_ui;
 mod issues;
@@ -78,7 +81,15 @@ fn main() -> Result<()> {
     let jvm_available = gradle::jvm_available();
     let adb_available = adb::is_available();
     let device = adb::new_handle();
-    let app = App::new(cfg, state, jvm_available, adb_available, device.clone());
+    let fps_package = fps::new_package_handle();
+    let app = App::new(
+        cfg,
+        state,
+        jvm_available,
+        adb_available,
+        device.clone(),
+        fps_package.clone(),
+    );
 
     let dispatcher = DispatchContext::new();
     let mut runtime = Runtime { logcat_child: None };
@@ -88,6 +99,7 @@ fn main() -> Result<()> {
         monitor::spawn_poller(device.clone(), dispatcher.tx.clone());
         processes::spawn_poller(device.clone(), dispatcher.tx.clone());
         adb::devices::spawn_poller(dispatcher.tx.clone());
+        fps::spawn_poller(device.clone(), fps_package, dispatcher.tx.clone());
     } else {
         let _ = dispatcher.tx.send(Event::Status {
             text: "adb not found in PATH — logcat/monitor disabled".to_string(),
@@ -162,6 +174,14 @@ fn run_loop(
                         }
                     }
                 }
+                Event::Emulators(list) => {
+                    if let Some(picker) = app.emulator_picker.as_mut() {
+                        picker.entries = list;
+                        picker.loading = false;
+                        picker.selected = 0;
+                    }
+                }
+                Event::Fps(sample) => app.fps.push(sample),
                 Event::Status { text, error } => app.flash(text, error),
             }
         }
@@ -208,6 +228,9 @@ fn handle_key(
         InputMode::LogcatPackage => {
             return handle_package_key(app, key, dispatcher);
         }
+        InputMode::FpsPackage => {
+            return handle_fps_package_key(app, key);
+        }
         InputMode::LayoutEdit => {
             return handle_layout_editor_key(app, key);
         }
@@ -217,6 +240,11 @@ fn handle_key(
     // Project picker overlay: consumes keys while open.
     if app.project_picker.is_some() {
         return handle_project_picker_key(app, key);
+    }
+
+    // Emulator picker overlay: consumes keys while open.
+    if app.emulator_picker.is_some() {
+        return handle_emulator_picker_key(app, key);
     }
 
     // Device selector overlay: consumes keys while open.
@@ -285,6 +313,20 @@ fn handle_key(
         }
         KeyCode::Char('w') => {
             open_project_picker(app, dispatcher);
+        }
+        KeyCode::Char('e') => {
+            open_emulator_picker(app, dispatcher);
+        }
+        KeyCode::Char('F') => {
+            app.toggle_panel(PanelId::Fps);
+        }
+        KeyCode::Char('P') if app.focus == PanelId::Fps => {
+            app.fps_package_input = app.fps.current_package().unwrap_or_default();
+            app.input_mode = InputMode::FpsPackage;
+        }
+        KeyCode::Char('X') if app.focus == PanelId::Fps => {
+            app.fps.set_package(None);
+            app.flash("fps package cleared".to_string(), false);
         }
         KeyCode::Char('/') if app.focus == PanelId::Logcat => {
             app.input_mode = InputMode::LogcatFilter;
@@ -444,7 +486,7 @@ fn handle_layout_editor_key(app: &mut App, key: KeyEvent) {
         KeyCode::Char(']') => editor.resize_cols(1),
         KeyCode::Char('-') => editor.resize_rows(-1),
         KeyCode::Char('=') | KeyCode::Char('+') => editor.resize_rows(1),
-        KeyCode::Char(c) if c.is_ascii_digit() => {
+        KeyCode::Char(c) => {
             if let Some(panel) = PANELS.iter().find(|p| p.toggle_key == c) {
                 editor.assign(panel.id);
             }
@@ -722,6 +764,70 @@ fn handle_project_picker_key(app: &mut App, key: KeyEvent) {
             if let Some(path) = path {
                 app.apply_project_dir(path);
             }
+        }
+        _ => {}
+    }
+}
+
+fn open_emulator_picker(app: &mut App, dispatcher: &DispatchContext) {
+    app.emulator_picker = Some(emulator_picker::EmulatorPicker::new());
+    app.flash("scanning emulator AVDs…".to_string(), false);
+    emulator_picker::spawn_scan(dispatcher.tx.clone());
+}
+
+fn handle_emulator_picker_key(app: &mut App, key: KeyEvent) {
+    let Some(picker) = app.emulator_picker.as_mut() else {
+        return;
+    };
+    match key.code {
+        KeyCode::Esc | KeyCode::Char('q') => {
+            app.emulator_picker = None;
+        }
+        KeyCode::Char('j') | KeyCode::Down => {
+            if !picker.entries.is_empty() {
+                picker.selected = (picker.selected + 1).min(picker.entries.len() - 1);
+            }
+        }
+        KeyCode::Char('k') | KeyCode::Up => {
+            picker.selected = picker.selected.saturating_sub(1);
+        }
+        KeyCode::Enter => {
+            let avd = picker.entries.get(picker.selected).cloned();
+            app.emulator_picker = None;
+            if let Some(name) = avd {
+                match emulator_picker::launch(&name) {
+                    Ok(()) => app.flash(format!("launching AVD: {}", name), false),
+                    Err(e) => app.flash(format!("emulator: {}", e), true),
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+fn handle_fps_package_key(app: &mut App, key: KeyEvent) {
+    match key.code {
+        KeyCode::Esc => {
+            app.input_mode = InputMode::Normal;
+            app.fps_package_input.clear();
+        }
+        KeyCode::Enter => {
+            let pkg = app.fps_package_input.trim().to_string();
+            app.input_mode = InputMode::Normal;
+            app.fps_package_input.clear();
+            if pkg.is_empty() {
+                app.fps.set_package(None);
+                app.flash("fps package cleared".to_string(), false);
+            } else {
+                app.fps.set_package(Some(pkg.clone()));
+                app.flash(format!("fps: tracking {}", pkg), false);
+            }
+        }
+        KeyCode::Backspace => {
+            app.fps_package_input.pop();
+        }
+        KeyCode::Char(c) => {
+            app.fps_package_input.push(c);
         }
         _ => {}
     }

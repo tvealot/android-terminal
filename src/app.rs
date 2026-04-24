@@ -4,7 +4,9 @@ use std::path::PathBuf;
 use crate::adb::devices::DeviceEntry;
 use crate::adb::DeviceHandle;
 use crate::config::{save_state, update_project_dir, Config, State};
+use crate::emulator_picker::EmulatorPicker;
 use crate::files::FilesState;
+use crate::fps::{self, FpsState};
 use crate::layout::{LayoutEditor, LayoutGrid};
 use crate::panel::{def, Feature, PanelId, PANELS};
 use crate::project_picker::ProjectPicker;
@@ -25,16 +27,19 @@ pub struct App {
     pub issues: crate::issues::IssuesState,
     pub files: FilesState,
     pub shell: crate::shell::ShellState,
+    pub fps: FpsState,
     pub input_mode: InputMode,
     pub device: DeviceHandle,
     pub devices: Vec<DeviceEntry>,
     pub devices_selected: usize,
     pub device_selector: Option<usize>,
     pub package_input: String,
+    pub fps_package_input: String,
     pub pending_g: bool,
     pub layout: Option<LayoutGrid>,
     pub layout_editor: Option<LayoutEditor>,
     pub project_picker: Option<ProjectPicker>,
+    pub emulator_picker: Option<EmulatorPicker>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -42,6 +47,7 @@ pub enum InputMode {
     Normal,
     LogcatFilter,
     LogcatPackage,
+    FpsPackage,
     LayoutEdit,
 }
 
@@ -58,6 +64,7 @@ impl App {
         jvm_available: bool,
         adb_available: bool,
         device: DeviceHandle,
+        fps_package: fps::FpsPackageHandle,
     ) -> Self {
         let mut visible: HashSet<PanelId> = state.visible.into_iter().collect();
         if !jvm_available {
@@ -102,16 +109,19 @@ impl App {
             issues: crate::issues::IssuesState::default(),
             files,
             shell: crate::shell::ShellState::default(),
+            fps: FpsState::new(fps_package),
             input_mode: InputMode::Normal,
             device,
             devices: Vec::new(),
             devices_selected: 0,
             device_selector: None,
             package_input: String::new(),
+            fps_package_input: String::new(),
             pending_g: false,
             layout,
             layout_editor: None,
             project_picker: None,
+            emulator_picker: None,
         }
     }
 

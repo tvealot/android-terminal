@@ -50,7 +50,11 @@ pub struct State {
 impl Default for State {
     fn default() -> Self {
         Self {
-            visible: PANELS.iter().map(|p| p.id).collect(),
+            visible: PANELS
+                .iter()
+                .filter(|p| p.id != PanelId::Fps)
+                .map(|p| p.id)
+                .collect(),
             focus: PANELS[0].id,
             layout: None,
         }
