@@ -6,6 +6,8 @@ mod app_data;
 mod app_data_ui;
 mod clipboard;
 mod config;
+mod device_actions;
+mod device_actions_ui;
 mod devices_ui;
 mod dispatch;
 mod emulator_picker;
@@ -202,6 +204,13 @@ fn run_loop(
                     app.app_control.last = Some(result);
                     app.flash(text, error);
                 }
+                Event::DeviceAction(result) => {
+                    app.device_actions.running = false;
+                    let error = !result.success;
+                    let text = result.summary.clone();
+                    app.device_actions.last = Some(result);
+                    app.flash(text, error);
+                }
                 Event::AppData(event) => {
                     if app_data_event_matches_target(&app, &event) {
                         let status = app_data_status(&event);
@@ -287,6 +296,12 @@ fn handle_key(
         InputMode::DeepLinkUrl => {
             return handle_deep_link_url_key(app, key);
         }
+        InputMode::DeviceText
+        | InputMode::DeviceTap
+        | InputMode::DeviceLocale
+        | InputMode::DeviceFontScale => {
+            return handle_device_action_input_key(app, key, dispatcher);
+        }
         InputMode::LayoutEdit => {
             return handle_layout_editor_key(app, key);
         }
@@ -361,6 +376,10 @@ fn handle_key(
     }
 
     if app.focus == PanelId::AppControl && handle_app_control_key(app, key, dispatcher) {
+        return;
+    }
+
+    if app.focus == PanelId::DeviceActions && handle_device_actions_key(app, key, dispatcher) {
         return;
     }
 
@@ -1184,6 +1203,99 @@ fn start_app_action(app: &mut App, dispatcher: &DispatchContext, confirm: bool) 
     app.app_control.running = true;
     app.app_control.last = None;
     crate::app_control::spawn_action(app.device.clone(), package, action, dispatcher.tx.clone());
+}
+
+fn handle_device_actions_key(
+    app: &mut App,
+    key: KeyEvent,
+    dispatcher: &DispatchContext,
+) -> bool {
+    match key.code {
+        KeyCode::Char('j') | KeyCode::Down => {
+            app.device_actions.move_down();
+            true
+        }
+        KeyCode::Char('k') | KeyCode::Up => {
+            app.device_actions.move_up();
+            true
+        }
+        KeyCode::Enter => {
+            start_device_action(app, dispatcher);
+            true
+        }
+        _ => false,
+    }
+}
+
+fn start_device_action(app: &mut App, dispatcher: &DispatchContext) {
+    if app.device_actions.running {
+        app.flash("device action already running".to_string(), false);
+        return;
+    }
+    let action = app.device_actions.selected_action();
+    match action {
+        device_actions::DeviceAction::InputText => {
+            app.device_actions.input.clear();
+            app.input_mode = InputMode::DeviceText;
+        }
+        device_actions::DeviceAction::Tap => {
+            app.device_actions.input.clear();
+            app.input_mode = InputMode::DeviceTap;
+        }
+        device_actions::DeviceAction::Locale => {
+            app.device_actions.input = "en-US".to_string();
+            app.input_mode = InputMode::DeviceLocale;
+        }
+        device_actions::DeviceAction::FontScale => {
+            app.device_actions.input = "1.0".to_string();
+            app.input_mode = InputMode::DeviceFontScale;
+        }
+        _ => spawn_device_action(app, dispatcher, action, None),
+    }
+}
+
+fn handle_device_action_input_key(
+    app: &mut App,
+    key: KeyEvent,
+    dispatcher: &DispatchContext,
+) {
+    match key.code {
+        KeyCode::Esc => {
+            app.input_mode = InputMode::Normal;
+            app.device_actions.input.clear();
+        }
+        KeyCode::Enter => {
+            let input = app.device_actions.input.trim().to_string();
+            let action = match app.input_mode {
+                InputMode::DeviceText => device_actions::DeviceAction::InputText,
+                InputMode::DeviceTap => device_actions::DeviceAction::Tap,
+                InputMode::DeviceLocale => device_actions::DeviceAction::Locale,
+                InputMode::DeviceFontScale => device_actions::DeviceAction::FontScale,
+                _ => return,
+            };
+            app.input_mode = InputMode::Normal;
+            app.device_actions.input.clear();
+            spawn_device_action(app, dispatcher, action, Some(input));
+        }
+        KeyCode::Backspace => {
+            app.device_actions.input.pop();
+        }
+        KeyCode::Char(c) => {
+            app.device_actions.input.push(c);
+        }
+        _ => {}
+    }
+}
+
+fn spawn_device_action(
+    app: &mut App,
+    dispatcher: &DispatchContext,
+    action: device_actions::DeviceAction,
+    input: Option<String>,
+) {
+    app.device_actions.running = true;
+    app.device_actions.last = None;
+    device_actions::spawn_action(app.device.clone(), action, input, dispatcher.tx.clone());
 }
 
 fn handle_app_data_key(app: &mut App, key: KeyEvent, dispatcher: &DispatchContext) -> bool {

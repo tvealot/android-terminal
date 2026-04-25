@@ -5,7 +5,7 @@ logcat, issues triage, and an embedded `adb shell`.
 
 Inspired by [measure-sh/holo](https://github.com/measure-sh/holo), extended with:
 
-- **Toggleable panels** (`1..9`, `A`, `B`, `M`, `U`, `F`, `H`) with a grid **layout editor**
+- **Toggleable panels** (`1..9`, `A`, `B`, `M`, `U`, `D`, `F`, `H`) with a grid **layout editor**
   (`0`) — state persists across runs.
 - **Gradle panel** — live Tooling-API task stream (JVM sidecar) plus a host
   process list (daemon / wrapper / kotlin / android / agent) with `SIGTERM` kill.
@@ -16,6 +16,9 @@ Inspired by [measure-sh/holo](https://github.com/measure-sh/holo), extended with
   components, and deep links using `aapt`/`apkanalyzer` when available.
 - **Intents panel** — run deep links via `am start -a VIEW -d`, optionally scoped
   to the shared target package.
+- **Device Actions panel** — screenshot, screenrecord, rotation, dark mode,
+  locale, font scale, battery simulation, airplane/Wi-Fi/data toggles, text
+  input, and tap.
 - **Issues panel** — detects Java/Kotlin stacktraces in logcat and captures the
   full trace for a detail view.
 - **Project picker** (`w`) — scans `~/Documents` for Android projects (directories
@@ -45,6 +48,7 @@ Inspired by [measure-sh/holo](https://github.com/measure-sh/holo), extended with
 | files     | `6` | `f` | Local project tree, text preview pane                       |
 | network   | `7` | `n` | Logcat view filtered to `okhttp`/`http`/`socket`/`dns`/...  |
 | devices   | `8` | `v` | `adb devices` list, `Enter` to switch                       |
+| actions   | `D` | `o` | Device actions: screenshot, screenrecord, rotate, dark mode, locale, font, battery, network, input |
 | shell     | `9` | `s` | Embedded `adb shell` PTY                                    |
 | app       | `A` | `a` | Launch / force-stop / clear data / settings / package info  |
 | data      | `B` | `b` | `run-as` app-private file browser with preview              |
@@ -73,6 +77,7 @@ src/
   gradle.rs           sidecar spawn, host ps poller, GradleState
   gradle_ui.rs
   app_control.rs / app_control_ui.rs
+  device_actions.rs / device_actions_ui.rs
   app_data.rs / app_data_ui.rs
   manifest.rs / manifest_ui.rs
   intents.rs / intents_ui.rs
@@ -164,11 +169,11 @@ on resize.
 
 | Key          | Action                                            |
 | ------------ | ------------------------------------------------- |
-| `1..9`, `A`, `B`, `M`, `U`, `F`, `H` | toggle panel visibility     |
+| `1..9`, `A`, `B`, `M`, `U`, `D`, `F`, `H` | toggle panel visibility |
 | `[` / `]`    | switch previous / next layout screen; each screen keeps its own panels, focus, and grid layout |
 | `Alt+1..4`   | switch directly to layout screen 1..4, if your keyboard has Alt |
 | `0`          | open grid layout editor                           |
-| `l/m/g/p/i/f/n/v/s/a/b/x/u/F/H` | focus panel                |
+| `l/m/g/p/i/f/n/v/o/s/a/b/x/u/F/H` | focus panel              |
 | `Tab` / `Shift+Tab` | cycle focus across visible panels          |
 | `d`          | open device selector overlay                      |
 | `w`          | open project picker overlay                       |
@@ -230,6 +235,20 @@ on resize.
 | `C` (intents) | clear deep link URL |
 | `Enter` (intents) | launch deep link |
 
+### Device Actions
+
+| Key | Action |
+| --- | ------ |
+| `D` / `o` | toggle / focus Device Actions |
+| `j`/`k` or `↓`/`↑` | choose action |
+| `Enter` | run selected action |
+| input actions | prompt in footer; `Enter` runs, `Esc` cancels |
+
+Actions include screenshot (`droidscope-screenshot-*.png`), 10-second
+screenrecord (`droidscope-screenrecord-*.mp4`), rotate right, dark mode
+on/off, locale, font scale, battery unplug/reset, airplane mode, Wi-Fi,
+mobile data, `input text`, and `input tap x y`.
+
 ### Layout editor (after `0`)
 
 Use `[` / `]` to switch between independent layout screens. `Alt+1..4` also
@@ -240,7 +259,7 @@ currently active screen only.
 | --- | ------ |
 | `h/j/k/l` | move cursor |
 | `v` / `Space` | toggle selection |
-| panel toggle key | assign panel to selected cell |
+| panel toggle key (`1..9`, `A`, `B`, `M`, `U`, `D`, `F`, `H`) | assign panel to selected cell |
 | `x` / `d` | delete cell at cursor |
 | `c` | clear all cells |
 | `[` / `]` | cols -/+ |

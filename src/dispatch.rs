@@ -19,6 +19,7 @@ pub enum Event {
     Fps(crate::fps::FpsSample),
     Perf(crate::perf::PerfSample),
     AppControl(crate::app_control::AppActionResult),
+    DeviceAction(crate::device_actions::DeviceActionResult),
     AppData(crate::app_data::AppDataEvent),
     Manifest(crate::manifest::ManifestReport),
     Intent(crate::intents::IntentResult),

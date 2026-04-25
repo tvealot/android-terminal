@@ -36,6 +36,7 @@ pub struct App {
     pub fps: FpsState,
     pub perf: PerfState,
     pub app_control: crate::app_control::AppControlState,
+    pub device_actions: crate::device_actions::DeviceActionsState,
     pub app_data: crate::app_data::AppDataState,
     pub manifest: crate::manifest::ManifestState,
     pub intents: crate::intents::IntentsState,
@@ -74,6 +75,10 @@ pub enum InputMode {
     PerfPackage,
     TargetPackage,
     DeepLinkUrl,
+    DeviceText,
+    DeviceTap,
+    DeviceLocale,
+    DeviceFontScale,
     LayoutEdit,
 }
 
@@ -157,6 +162,7 @@ impl App {
             fps: FpsState::new(fps_package),
             perf: PerfState::new(perf_package),
             app_control: crate::app_control::AppControlState::default(),
+            device_actions: crate::device_actions::DeviceActionsState::default(),
             app_data: crate::app_data::AppDataState::default(),
             manifest: crate::manifest::ManifestState::default(),
             intents: crate::intents::IntentsState::default(),
