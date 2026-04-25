@@ -3,6 +3,7 @@ use std::path::PathBuf;
 
 use crate::adb::devices::DeviceEntry;
 use crate::adb::DeviceHandle;
+use crate::command_palette::CommandPalette;
 use crate::config::{
     save_state, save_workspaces, update_android_package, update_default_task, update_project_dir,
     workspace_id, workspace_name, Config, ScreenState, State, WorkspaceLogcat, WorkspaceProfile,
@@ -61,6 +62,7 @@ pub struct App {
     pub workspace_picker: Option<WorkspacePicker>,
     pub variant_picker: Option<VariantPicker>,
     pub emulator_picker: Option<EmulatorPicker>,
+    pub command_palette: Option<CommandPalette>,
     pub zoom: Option<PanelId>,
 }
 
@@ -228,6 +230,7 @@ impl App {
             workspace_picker: None,
             variant_picker: None,
             emulator_picker: None,
+            command_palette: None,
             zoom: None,
         };
         if let Some(workspace) = active_workspace {

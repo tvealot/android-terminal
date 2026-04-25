@@ -60,6 +60,10 @@ pub fn render(f: &mut Frame, app: &App, theme: &Theme) {
     if app.emulator_picker.is_some() {
         render_emulator_picker(f, area, app, theme);
     }
+
+    if app.command_palette.is_some() {
+        render_command_palette(f, area, app, theme);
+    }
 }
 
 fn render_header(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
@@ -441,6 +445,10 @@ fn render_footer(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         Line::from(Span::styled(flash.text.clone(), style))
     } else {
         Line::from(vec![
+            Span::styled(
+                "Ctrl+P: cmd palette  ",
+                Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+            ),
             Span::styled("panel keys toggle  ", Style::default().fg(theme.muted)),
             Span::styled("[/] screens  ", Style::default().fg(theme.muted)),
             Span::styled("0 layout  ", Style::default().fg(theme.muted)),
@@ -687,6 +695,14 @@ fn render_help(f: &mut Frame, area: Rect, theme: &Theme) {
     ));
     lines.push(Line::from("  x delete  c clear  [ ] cols  - = rows"));
     lines.push(Line::from("  Enter save  Esc cancel"));
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        "Command palette",
+        Style::default()
+            .fg(theme.accent)
+            .add_modifier(Modifier::BOLD),
+    )));
+    lines.push(Line::from("  Ctrl+P  open command palette (fuzzy search all actions)"));
     lines.push(Line::from(""));
     lines.push(Line::from("  ?  toggle this help"));
     lines.push(Line::from("  q  quit"));
@@ -1126,4 +1142,121 @@ fn render_device_selector(f: &mut Frame, area: Rect, app: &App, theme: &Theme, s
         Style::default().fg(theme.muted),
     )));
     f.render_widget(Paragraph::new(lines), inner);
+}
+
+fn render_command_palette(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
+    let Some(palette) = &app.command_palette else {
+        return;
+    };
+    let width = area.width.min(78);
+    let max_rows: u16 = 18;
+    let height = max_rows.min(area.height.saturating_sub(2)).max(6);
+    let rect = Rect {
+        x: area.x + (area.width.saturating_sub(width)) / 2,
+        y: area.y + 2,
+        width,
+        height,
+    };
+    f.render_widget(Clear, rect);
+    let block = Block::default()
+        .title(Span::styled(
+            " command palette ",
+            Style::default().fg(theme.fg).add_modifier(Modifier::BOLD),
+        ))
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(theme.accent));
+    let inner = block.inner(rect);
+    f.render_widget(block, rect);
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Min(1),
+            Constraint::Length(1),
+        ])
+        .split(inner);
+
+    let prompt = Line::from(vec![
+        Span::styled(
+            "> ",
+            Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(palette.query.clone(), Style::default().fg(theme.fg)),
+        Span::styled("▌", Style::default().fg(theme.accent)),
+    ]);
+    f.render_widget(Paragraph::new(prompt), chunks[0]);
+    f.render_widget(
+        Paragraph::new(Line::from(Span::styled(
+            "─".repeat(chunks[1].width as usize),
+            Style::default().fg(theme.surface),
+        ))),
+        chunks[1],
+    );
+
+    let filtered = palette.filtered();
+    let visible_rows = chunks[2].height as usize;
+    let selected = palette.selected.min(filtered.len().saturating_sub(1));
+    let start = if visible_rows == 0 || filtered.len() <= visible_rows {
+        0
+    } else if selected >= visible_rows {
+        selected + 1 - visible_rows
+    } else {
+        0
+    };
+
+    let mut lines: Vec<Line> = Vec::new();
+    if filtered.is_empty() {
+        lines.push(Line::from(Span::styled(
+            "  no matching commands",
+            Style::default().fg(theme.muted),
+        )));
+    } else {
+        for (row, (idx, _)) in filtered.iter().enumerate().skip(start).take(visible_rows) {
+            let cmd = &palette.commands[*idx];
+            let is_selected = row == selected;
+            let row_style = if is_selected {
+                Style::default()
+                    .fg(theme.bg)
+                    .bg(theme.accent)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(theme.fg)
+            };
+            let cat_style = if is_selected {
+                Style::default().fg(theme.bg).bg(theme.accent)
+            } else {
+                Style::default().fg(theme.muted)
+            };
+            let hint_style = if is_selected {
+                Style::default().fg(theme.bg).bg(theme.accent)
+            } else {
+                Style::default().fg(theme.warn)
+            };
+            let marker = if is_selected { "▶ " } else { "  " };
+            lines.push(Line::from(vec![
+                Span::styled(marker.to_string(), row_style),
+                Span::styled(format!("{:<8}", truncate(cmd.category, 8)), cat_style),
+                Span::raw(" "),
+                Span::styled(format!("{:<46}", truncate(&cmd.label, 46)), row_style),
+                Span::styled(format!(" {}", truncate(&cmd.hint, 12)), hint_style),
+            ]));
+        }
+    }
+    f.render_widget(Paragraph::new(lines), chunks[2]);
+
+    let total = palette.commands.len();
+    let footer = format!(
+        "  {} / {}   Enter: run   ↑↓ / Ctrl+N/P: move   Esc: close",
+        filtered.len(),
+        total
+    );
+    f.render_widget(
+        Paragraph::new(Line::from(Span::styled(
+            footer,
+            Style::default().fg(theme.muted),
+        ))),
+        chunks[3],
+    );
 }

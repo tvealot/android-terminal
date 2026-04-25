@@ -5,6 +5,7 @@ mod app_control_ui;
 mod app_data;
 mod app_data_ui;
 mod clipboard;
+mod command_palette;
 mod config;
 mod device_actions;
 mod device_actions_ui;
@@ -322,6 +323,19 @@ fn handle_key(
 
     let raw = key;
     let key = keymap::normalize(key);
+
+    // Command palette overlay: consumes keys while open.
+    if app.command_palette.is_some() {
+        return handle_command_palette_key(app, key, dispatcher, runtime);
+    }
+
+    // Ctrl+P opens command palette globally (works even from shell focus).
+    if key.modifiers.contains(KeyModifiers::CONTROL)
+        && matches!(key.code, KeyCode::Char('p') | KeyCode::Char('P'))
+    {
+        open_command_palette(app);
+        return;
+    }
 
     // Workspace picker overlay: consumes keys while open.
     if app.workspace_picker.is_some() {
@@ -1147,6 +1161,81 @@ fn handle_emulator_picker_key(app: &mut App, key: KeyEvent) {
         }
         _ => {}
     }
+}
+
+fn open_command_palette(app: &mut App) {
+    let commands = command_palette::build_commands(app.jvm_available);
+    app.command_palette = Some(command_palette::CommandPalette::new(commands));
+}
+
+fn handle_command_palette_key(
+    app: &mut App,
+    key: KeyEvent,
+    dispatcher: &DispatchContext,
+    runtime: &mut Runtime,
+) {
+    let Some(palette) = app.command_palette.as_mut() else {
+        return;
+    };
+    let len = palette.filtered().len();
+    let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+    let alt = key.modifiers.contains(KeyModifiers::ALT);
+    match key.code {
+        KeyCode::Esc => {
+            app.command_palette = None;
+        }
+        KeyCode::Enter => {
+            let kind = palette.current_kind();
+            app.command_palette = None;
+            if let Some(kind) = kind {
+                execute_palette_command(app, kind, dispatcher, runtime);
+            }
+        }
+        KeyCode::Down => palette.move_down(len),
+        KeyCode::Up => palette.move_up(),
+        KeyCode::Char('n') if ctrl => palette.move_down(len),
+        KeyCode::Char('j') if ctrl => palette.move_down(len),
+        KeyCode::Char('p') if ctrl => palette.move_up(),
+        KeyCode::Char('k') if ctrl => palette.move_up(),
+        KeyCode::Backspace => {
+            palette.query.pop();
+            palette.selected = 0;
+        }
+        KeyCode::Char(c) if !ctrl && !alt => {
+            palette.query.push(c);
+            palette.selected = 0;
+        }
+        _ => {}
+    }
+}
+
+fn execute_palette_command(
+    app: &mut App,
+    kind: command_palette::CommandKind,
+    dispatcher: &DispatchContext,
+    runtime: &mut Runtime,
+) {
+    use command_palette::CommandKind::*;
+    match kind {
+        Quit => app.should_quit = true,
+        ToggleHelp => app.show_help = !app.show_help,
+        PickProject => open_project_picker(app, dispatcher),
+        OpenWorkspaces => open_workspace_picker(app),
+        SaveWorkspace => app.save_current_workspace(),
+        RunGradle => start_gradle(app, dispatcher),
+        PickVariant => open_variant_picker(app, dispatcher),
+        PickDevice => open_device_selector(app),
+        LaunchEmulator => open_emulator_picker(app, dispatcher),
+        CycleFocusNext => app.cycle_focus(true),
+        CycleFocusPrev => app.cycle_focus(false),
+        NextScreen => app.cycle_screen(true),
+        PrevScreen => app.cycle_screen(false),
+        EditLayout => app.open_layout_editor(),
+        ToggleZoom => toggle_zoom(app),
+        TogglePanel(id) => app.toggle_panel(id),
+        FocusPanel(id) => app.focus_panel(id),
+    }
+    let _ = runtime;
 }
 
 fn handle_fps_package_key(app: &mut App, key: KeyEvent) {
