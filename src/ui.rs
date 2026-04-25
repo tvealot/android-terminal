@@ -93,6 +93,14 @@ fn render_header(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
             .fg(theme.accent)
             .add_modifier(Modifier::BOLD),
     ));
+    if app.mouse_enabled {
+        spans.push(Span::styled(
+            "[mouse] ",
+            Style::default()
+                .fg(theme.warn)
+                .add_modifier(Modifier::BOLD),
+        ));
+    }
     if let Some(active) = app.workspaces.active.as_ref().and_then(|id| {
         app.workspaces
             .workspaces
@@ -449,6 +457,7 @@ fn render_footer(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
                 "Ctrl+P: cmd palette  ",
                 Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
             ),
+            Span::styled("Alt+m: mouse  ", Style::default().fg(theme.muted)),
             Span::styled("panel keys toggle  ", Style::default().fg(theme.muted)),
             Span::styled("[/] screens  ", Style::default().fg(theme.muted)),
             Span::styled("0 layout  ", Style::default().fg(theme.muted)),
@@ -705,6 +714,9 @@ fn render_help(f: &mut Frame, area: Rect, theme: &Theme) {
     lines.push(Line::from("  Ctrl+P  open command palette (fuzzy search all actions)"));
     lines.push(Line::from(""));
     lines.push(Line::from("  ?  toggle this help"));
+    lines.push(Line::from(
+        "  Alt+m  toggle mouse scroll/click mode (off = terminal text selection)",
+    ));
     lines.push(Line::from("  q  quit"));
 
     f.render_widget(Paragraph::new(lines), inner);

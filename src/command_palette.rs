@@ -4,6 +4,7 @@ use crate::panel::{Feature, PanelId, PANELS};
 pub enum CommandKind {
     Quit,
     ToggleHelp,
+    ToggleMouse,
     PickProject,
     OpenWorkspaces,
     SaveWorkspace,
@@ -127,6 +128,7 @@ pub fn build_commands(jvm_available: bool) -> Vec<CommandEntry> {
     let mut v = vec![
         entry(CommandKind::Quit, "Quit", "App", "q"),
         entry(CommandKind::ToggleHelp, "Toggle help overlay", "App", "?"),
+        entry(CommandKind::ToggleMouse, "Toggle mouse mode", "App", "Alt+m"),
         entry(CommandKind::PickProject, "Pick Android project…", "Project", "w"),
         entry(CommandKind::OpenWorkspaces, "Open saved workspaces…", "Project", "W"),
         entry(CommandKind::SaveWorkspace, "Save current workspace", "Project", "S"),

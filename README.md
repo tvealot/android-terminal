@@ -172,10 +172,11 @@ preferred device, logcat filters, and screen/layout state.
 ./target/release/droidscope
 ```
 
-Text selection: mouse capture is disabled, so terminal-native
+Text selection: mouse capture is disabled by default, so terminal-native
 selection + copy works normally (drag to select, ⌘C / right-click
-copy). The embedded shell PTY is the exception — its viewport repaints
-on resize.
+copy). Press `Alt+m` when you want mouse wheel scrolling and row clicks;
+press `Alt+m` again to restore terminal text selection. The embedded shell
+PTY is the exception — its viewport repaints on resize.
 
 ### Global
 
@@ -188,6 +189,7 @@ on resize.
 | `l/m/g/p/i/f/n/v/o/s/a/b/x/u/F/H` | focus panel              |
 | `Tab` / `Shift+Tab` | cycle focus across visible panels          |
 | `z`          | zoom focused panel (`Esc` restores)               |
+| `Alt+m`      | toggle mouse mode for wheel scrolling and row clicks; off restores terminal text selection |
 | `d`          | open device selector overlay                      |
 | `w`          | open project picker overlay                       |
 | `W`          | open saved workspace overlay                      |

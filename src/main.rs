@@ -48,13 +48,15 @@ use std::time::Duration;
 
 use color_eyre::eyre::{Result, WrapErr};
 use crossterm::event::{
-    self, Event as CEvent, KeyCode, KeyEvent, KeyEventKind, KeyModifiers,
+    self, DisableMouseCapture, EnableMouseCapture, Event as CEvent, KeyCode, KeyEvent,
+    KeyEventKind, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
 };
 use crossterm::execute;
 use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
 };
 use ratatui::backend::CrosstermBackend;
+use ratatui::layout::{Constraint, Direction, Layout, Rect, Size};
 use ratatui::Terminal;
 
 use crate::app::{App, InputMode};
@@ -143,6 +145,7 @@ fn setup_terminal() -> Result<Terminal<CrosstermBackend<Stdout>>> {
 
 fn restore_terminal(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<()> {
     disable_raw_mode().ok();
+    execute!(terminal.backend_mut(), DisableMouseCapture).ok();
     execute!(terminal.backend_mut(), LeaveAlternateScreen).ok();
     terminal.show_cursor().ok();
     Ok(())
@@ -154,6 +157,7 @@ fn run_loop(
     dispatcher: DispatchContext,
     mut runtime: Runtime,
 ) -> Result<()> {
+    let mut mouse_capture = false;
     loop {
         for ev in dispatcher.drain() {
             match ev {
@@ -266,9 +270,29 @@ fn run_loop(
         terminal.draw(|f| ui::render(f, &app, theme))?;
 
         if event::poll(Duration::from_millis(100))? {
-            if let CEvent::Key(key) = event::read()? {
-                if key.kind == KeyEventKind::Press {
-                    handle_key(&mut app, key, &dispatcher, &mut runtime);
+            match event::read()? {
+                CEvent::Key(key) => {
+                    if key.kind == KeyEventKind::Press {
+                        handle_key(&mut app, key, &dispatcher, &mut runtime);
+                    }
+                }
+                CEvent::Mouse(mouse) if app.mouse_enabled => {
+                    handle_mouse(&mut app, mouse, term_size);
+                }
+                _ => {}
+            }
+        }
+        if app.mouse_enabled != mouse_capture {
+            let command_result = if app.mouse_enabled {
+                execute!(terminal.backend_mut(), EnableMouseCapture)
+            } else {
+                execute!(terminal.backend_mut(), DisableMouseCapture)
+            };
+            match command_result {
+                Ok(()) => mouse_capture = app.mouse_enabled,
+                Err(e) => {
+                    app.mouse_enabled = mouse_capture;
+                    app.flash(format!("mouse mode failed: {}", e), true);
                 }
             }
         }
@@ -276,6 +300,9 @@ fn run_loop(
         if app.should_quit {
             if let Some(mut child) = runtime.logcat_child.take() {
                 let _ = child.kill();
+            }
+            if mouse_capture {
+                execute!(terminal.backend_mut(), DisableMouseCapture).ok();
             }
             app.shell.stop();
             return Ok(());
@@ -334,6 +361,13 @@ fn handle_key(
         && matches!(key.code, KeyCode::Char('p') | KeyCode::Char('P'))
     {
         open_command_palette(app);
+        return;
+    }
+
+    if key.modifiers.contains(KeyModifiers::ALT)
+        && matches!(key.code, KeyCode::Char('m') | KeyCode::Char('M'))
+    {
+        toggle_mouse_mode(app);
         return;
     }
 
@@ -634,6 +668,360 @@ fn handle_key(
         }
         _ => {}
     }
+}
+
+fn handle_mouse(
+    app: &mut App,
+    mouse: MouseEvent,
+    term_size: Size,
+) {
+    let Some((panel, area)) = panel_at(app, term_size, mouse.column, mouse.row) else {
+        return;
+    };
+    app.focus = panel;
+    match mouse.kind {
+        MouseEventKind::ScrollUp => mouse_scroll(app, panel, true),
+        MouseEventKind::ScrollDown => mouse_scroll(app, panel, false),
+        MouseEventKind::Down(MouseButton::Left) => {
+            mouse_left_click(app, panel, area, mouse.column, mouse.row);
+        }
+        _ => {}
+    }
+}
+
+fn mouse_scroll(app: &mut App, panel: PanelId, up: bool) {
+    match panel {
+        PanelId::Logcat => {
+            if up {
+                app.logcat.scroll_up(3);
+            } else {
+                app.logcat.scroll_down(3);
+            }
+            app.pending_g = false;
+        }
+        PanelId::Issues => {
+            if app.issues.expanded.is_some() {
+                if up {
+                    app.issues.detail_scroll = app.issues.detail_scroll.saturating_sub(3);
+                } else {
+                    app.issues.detail_scroll = app.issues.detail_scroll.saturating_add(3);
+                }
+            } else if up {
+                app.issues.move_up();
+            } else {
+                app.issues.move_down();
+            }
+        }
+        PanelId::Processes => select_delta(
+            &mut app.processes.selected,
+            app.processes.processes.len(),
+            up,
+        ),
+        PanelId::Gradle => select_delta(&mut app.gradle.selected, app.gradle.host_procs.len(), up),
+        PanelId::Devices => select_delta(&mut app.devices_selected, app.devices.len(), up),
+        PanelId::Files => {
+            if app.files.detail_open && app.files.detail_focused {
+                if up {
+                    app.files.detail_scroll = app.files.detail_scroll.saturating_sub(3);
+                } else {
+                    app.files.detail_scroll = app.files.detail_scroll.saturating_add(3);
+                }
+            } else {
+                let len = app.files.flatten_visible().len();
+                select_delta(&mut app.files.selected_index, len, up);
+            }
+        }
+        PanelId::AppControl => {
+            if up {
+                app.app_control.move_up();
+            } else {
+                app.app_control.move_down();
+            }
+        }
+        PanelId::DeviceActions => {
+            if up {
+                app.device_actions.move_up();
+            } else {
+                app.device_actions.move_down();
+            }
+        }
+        PanelId::AppData => {
+            if app.app_data.preview.is_some() && app.app_data.preview_focused {
+                if up {
+                    app.app_data.preview_scroll = app.app_data.preview_scroll.saturating_sub(3);
+                } else {
+                    app.app_data.preview_scroll = app.app_data.preview_scroll.saturating_add(3);
+                }
+            } else if up {
+                app.app_data.move_up();
+            } else {
+                app.app_data.move_down();
+            }
+        }
+        PanelId::Manifest => {
+            if up {
+                app.manifest.scroll_up(3);
+            } else {
+                app.manifest.scroll_down(3);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn mouse_left_click(
+    app: &mut App,
+    panel: PanelId,
+    area: Rect,
+    x: u16,
+    y: u16,
+) {
+    let inner = inset(area);
+    match panel {
+        PanelId::Processes => {
+            if let Some(row) = local_row(inner, x, y).and_then(|r| r.checked_sub(1)) {
+                select_row(&mut app.processes.selected, app.processes.processes.len(), row);
+            }
+        }
+        PanelId::Gradle => {
+            if let Some(row) = local_row(inner, x, y) {
+                let active = app.gradle.active.len() as u16;
+                if let Some(proc_row) = row.checked_sub(active) {
+                    select_row(&mut app.gradle.selected, app.gradle.host_procs.len(), proc_row);
+                }
+            }
+        }
+        PanelId::Issues => {
+            if app.issues.expanded.is_some() {
+                app.issues.toggle_expand();
+                return;
+            }
+            if let Some(row) = local_row(inner, x, y) {
+                let height = inner.height.saturating_sub(1) as usize;
+                let offset = app.issues.selected.saturating_sub(height.saturating_sub(1));
+                let index = offset + row as usize;
+                if index < app.issues.issues.len() {
+                    app.issues.selected = index;
+                }
+            }
+        }
+        PanelId::Devices => {
+            if let Some(row) = local_row(inner, x, y).and_then(|r| r.checked_sub(1)) {
+                select_row(&mut app.devices_selected, app.devices.len(), row);
+            }
+        }
+        PanelId::Files => click_files(app, inner, x, y),
+        PanelId::AppControl => click_app_control(app, inner, x, y),
+        PanelId::DeviceActions => click_device_actions(app, inner, x, y),
+        PanelId::AppData => click_app_data(app, inner, x, y),
+        PanelId::Manifest => app.manifest.scroll = y.saturating_sub(inner.y) as usize,
+        _ => {}
+    }
+}
+
+fn click_files(app: &mut App, inner: Rect, x: u16, y: u16) {
+    let tree = if app.files.detail_open {
+        let cols = split_cols(inner, 42, 58);
+        if contains(cols[1], x, y) {
+            app.files.detail_focused = true;
+            return;
+        }
+        app.files.detail_focused = false;
+        cols[0]
+    } else {
+        inner
+    };
+    if !contains(tree, x, y) {
+        return;
+    }
+    let list_y = tree.y + if app.files.detail_open { 2 } else { 1 };
+    if y < list_y {
+        return;
+    }
+    let flat = app.files.flatten_visible();
+    let visible_height = tree.height.saturating_sub(if app.files.detail_open { 2 } else { 1 });
+    let selected = app.files.selected_index.min(flat.len().saturating_sub(1));
+    let start = if selected >= visible_height as usize {
+        selected - visible_height as usize + 1
+    } else {
+        0
+    };
+    select_row_from_start(&mut app.files.selected_index, flat.len(), start, y - list_y);
+}
+
+fn click_app_control(app: &mut App, inner: Rect, x: u16, y: u16) {
+    let cols = split_cols(inner, 42, 58);
+    let Some(row) = local_row(cols[0], x, y).and_then(|r| r.checked_sub(2)) else {
+        return;
+    };
+    let stride = if cols[0].height > 8 { 2 } else { 1 };
+    select_row(
+        &mut app.app_control.selected,
+        crate::app_control::ACTIONS.len(),
+        row / stride,
+    );
+}
+
+fn click_device_actions(app: &mut App, inner: Rect, x: u16, y: u16) {
+    let cols = split_cols(inner, 44, 56);
+    let Some(row) = local_row(cols[0], x, y).and_then(|r| r.checked_sub(2)) else {
+        return;
+    };
+    let available = cols[0].height.saturating_sub(2) as usize;
+    let selected = app.device_actions.selected;
+    let start = if selected >= available {
+        selected + 1 - available
+    } else {
+        0
+    };
+    select_row_from_start(
+        &mut app.device_actions.selected,
+        crate::device_actions::ACTIONS.len(),
+        start,
+        row,
+    );
+}
+
+fn click_app_data(app: &mut App, inner: Rect, x: u16, y: u16) {
+    let list = if app.app_data.preview.is_some() {
+        let cols = split_cols(inner, 44, 56);
+        if contains(cols[1], x, y) {
+            app.app_data.preview_focused = true;
+            return;
+        }
+        app.app_data.preview_focused = false;
+        cols[0]
+    } else {
+        inner
+    };
+    let Some(row) = local_row(list, x, y).and_then(|r| r.checked_sub(2)) else {
+        return;
+    };
+    let visible_height = list.height.saturating_sub(2) as usize;
+    let selected = app
+        .app_data
+        .selected
+        .min(app.app_data.entries.len().saturating_sub(1));
+    let start = if selected >= visible_height {
+        selected - visible_height + 1
+    } else {
+        0
+    };
+    select_row_from_start(&mut app.app_data.selected, app.app_data.entries.len(), start, row);
+}
+
+fn select_delta(selected: &mut usize, len: usize, up: bool) {
+    if len == 0 {
+        *selected = 0;
+    } else if up {
+        *selected = selected.saturating_sub(1);
+    } else {
+        *selected = (*selected + 1).min(len - 1);
+    }
+}
+
+fn select_row(selected: &mut usize, len: usize, row: u16) {
+    if len > 0 {
+        *selected = (row as usize).min(len - 1);
+    }
+}
+
+fn select_row_from_start(selected: &mut usize, len: usize, start: usize, row: u16) {
+    if len > 0 {
+        let index = start + row as usize;
+        if index < len {
+            *selected = index;
+        }
+    }
+}
+
+fn panel_at(
+    app: &App,
+    term_size: Size,
+    x: u16,
+    y: u16,
+) -> Option<(PanelId, Rect)> {
+    let full = Rect {
+        x: 0,
+        y: 0,
+        width: term_size.width,
+        height: term_size.height,
+    };
+    let body = Rect {
+        x: full.x,
+        y: full.y + 1,
+        width: full.width,
+        height: full.height.saturating_sub(2),
+    };
+    if let Some(id) = app.zoom {
+        return contains(body, x, y).then_some((id, body));
+    }
+    if let Some(grid) = &app.layout {
+        for cell in &grid.cells {
+            let area = crate::layout::cell_rect(body, grid, cell.x, cell.y, cell.w, cell.h);
+            if contains(area, x, y) {
+                return Some((cell.panel, area));
+            }
+        }
+        return None;
+    }
+    let visible = app.visible_ordered();
+    if visible.is_empty() {
+        return None;
+    }
+    let constraints: Vec<Constraint> = visible
+        .iter()
+        .map(|_| Constraint::Ratio(1, visible.len() as u32))
+        .collect();
+    let rows = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints(constraints)
+        .split(body);
+    for (i, id) in visible.iter().enumerate() {
+        let mut area = rows[i];
+        if *id == PanelId::Monitor {
+            let split = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([Constraint::Ratio(2, 3), Constraint::Ratio(1, 3)])
+                .split(area);
+            area = split[1];
+        }
+        if contains(area, x, y) {
+            return Some((*id, area));
+        }
+    }
+    None
+}
+
+fn split_cols(area: Rect, left_percent: u16, right_percent: u16) -> [Rect; 2] {
+    let cols = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage(left_percent),
+            Constraint::Percentage(right_percent),
+        ])
+        .split(area);
+    [cols[0], cols[1]]
+}
+
+fn local_row(area: Rect, x: u16, y: u16) -> Option<u16> {
+    contains(area, x, y).then_some(y - area.y)
+}
+
+fn inset(area: Rect) -> Rect {
+    Rect {
+        x: area.x.saturating_add(1),
+        y: area.y.saturating_add(1),
+        width: area.width.saturating_sub(2),
+        height: area.height.saturating_sub(2),
+    }
+}
+
+fn contains(area: Rect, x: u16, y: u16) -> bool {
+    x >= area.x
+        && x < area.x.saturating_add(area.width)
+        && y >= area.y
+        && y < area.y.saturating_add(area.height)
 }
 
 fn handle_layout_editor_key(app: &mut App, key: KeyEvent) {
@@ -1219,6 +1607,7 @@ fn execute_palette_command(
     match kind {
         Quit => app.should_quit = true,
         ToggleHelp => app.show_help = !app.show_help,
+        ToggleMouse => toggle_mouse_mode(app),
         PickProject => open_project_picker(app, dispatcher),
         OpenWorkspaces => open_workspace_picker(app),
         SaveWorkspace => app.save_current_workspace(),
@@ -1790,6 +2179,16 @@ fn toggle_zoom(app: &mut App) {
         return;
     }
     app.zoom = Some(app.focus);
+}
+
+fn toggle_mouse_mode(app: &mut App) {
+    app.mouse_enabled = !app.mouse_enabled;
+    let msg = if app.mouse_enabled {
+        "mouse mode on: wheel scrolls, left click selects rows; Alt+m restores text selection"
+    } else {
+        "mouse mode off: terminal text selection restored"
+    };
+    app.flash(msg.to_string(), false);
 }
 
 fn start_gradle(app: &mut App, dispatcher: &DispatchContext) {
