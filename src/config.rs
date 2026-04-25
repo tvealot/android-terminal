@@ -117,6 +117,106 @@ pub fn load_state() -> State {
     serde_json::from_str(&text).unwrap_or_default()
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct WorkspaceStore {
+    #[serde(default)]
+    pub active: Option<String>,
+    #[serde(default)]
+    pub workspaces: Vec<WorkspaceProfile>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkspaceProfile {
+    pub id: String,
+    pub name: String,
+    pub project_dir: PathBuf,
+    #[serde(default)]
+    pub default_task: Option<String>,
+    #[serde(default)]
+    pub package: Option<String>,
+    #[serde(default)]
+    pub preferred_device: Option<String>,
+    #[serde(default)]
+    pub logcat: WorkspaceLogcat,
+    #[serde(default)]
+    pub screens: Vec<ScreenState>,
+    #[serde(default)]
+    pub active_screen: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkspaceLogcat {
+    #[serde(default)]
+    pub filter: String,
+    #[serde(default)]
+    pub min_level: crate::logcat::LogLevel,
+    #[serde(default)]
+    pub package_filter: Option<String>,
+    #[serde(default)]
+    pub use_regex: bool,
+}
+
+impl Default for WorkspaceLogcat {
+    fn default() -> Self {
+        Self {
+            filter: String::new(),
+            min_level: crate::logcat::LogLevel::Verbose,
+            package_filter: None,
+            use_regex: false,
+        }
+    }
+}
+
+impl WorkspaceStore {
+    pub fn active_workspace(&self) -> Option<&WorkspaceProfile> {
+        let active = self.active.as_ref()?;
+        self.workspaces.iter().find(|w| &w.id == active)
+    }
+
+    pub fn find_by_project(&self, project_dir: &Path) -> Option<&WorkspaceProfile> {
+        self.workspaces.iter().find(|w| w.project_dir == project_dir)
+    }
+
+    pub fn upsert(&mut self, workspace: WorkspaceProfile) {
+        self.active = Some(workspace.id.clone());
+        if let Some(existing) = self.workspaces.iter_mut().find(|w| w.id == workspace.id) {
+            *existing = workspace;
+        } else {
+            self.workspaces.push(workspace);
+        }
+        self.workspaces
+            .sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    }
+}
+
+pub fn workspace_id(project_dir: &Path) -> String {
+    project_dir.display().to_string()
+}
+
+pub fn workspace_name(project_dir: &Path) -> String {
+    project_dir
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .filter(|n| !n.is_empty())
+        .unwrap_or_else(|| project_dir.display().to_string())
+}
+
+pub fn load_workspaces() -> WorkspaceStore {
+    let path = config_dir().join("workspaces.json");
+    let Ok(text) = fs::read_to_string(&path) else {
+        return WorkspaceStore::default();
+    };
+    serde_json::from_str(&text).unwrap_or_default()
+}
+
+pub fn save_workspaces(store: &WorkspaceStore) -> std::io::Result<()> {
+    let dir = config_dir();
+    fs::create_dir_all(&dir)?;
+    let path = dir.join("workspaces.json");
+    let text = serde_json::to_string_pretty(store).unwrap();
+    fs::write(path, text)
+}
+
 pub fn save_state(state: &State) -> std::io::Result<()> {
     let dir = config_dir();
     fs::create_dir_all(&dir)?;
@@ -166,6 +266,32 @@ pub fn update_android_package(package: Option<&str>) -> std::io::Result<()> {
             );
         } else {
             a.remove("package");
+        }
+    }
+    let text = toml::to_string_pretty(&doc)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+    fs::write(cfg_path, text)
+}
+
+pub fn update_default_task(task: Option<&str>) -> std::io::Result<()> {
+    let dir = config_dir();
+    fs::create_dir_all(&dir)?;
+    let cfg_path = dir.join("config.toml");
+    let mut doc: toml::Table = match fs::read_to_string(&cfg_path) {
+        Ok(text) => text.parse().unwrap_or_default(),
+        Err(_) => toml::Table::new(),
+    };
+    let gradle = doc
+        .entry("gradle".to_string())
+        .or_insert_with(|| toml::Value::Table(toml::Table::new()));
+    if let toml::Value::Table(g) = gradle {
+        if let Some(task) = task {
+            g.insert(
+                "default_task".to_string(),
+                toml::Value::String(task.to_string()),
+            );
+        } else {
+            g.remove("default_task");
         }
     }
     let text = toml::to_string_pretty(&doc)

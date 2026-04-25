@@ -144,6 +144,11 @@ Use `w` in the TUI to pick a project interactively — it scans `~/Documents`
 for directories containing `gradlew`, lists them sorted by mtime, and writes
 the selection back to `gradle.project_dir`.
 
+Saved workspaces live in `~/.config/droidscope/workspaces.json`. Press `S` to
+save the current project profile, or `W` to switch between saved workspaces.
+A workspace binds the project directory, default Gradle task, target package,
+preferred device, logcat filters, and screen/layout state.
+
 ## Use
 
 ```sh
@@ -167,6 +172,8 @@ on resize.
 | `Tab` / `Shift+Tab` | cycle focus across visible panels          |
 | `d`          | open device selector overlay                      |
 | `w`          | open project picker overlay                       |
+| `W`          | open saved workspace overlay                      |
+| `S`          | save current project as a workspace               |
 | `e`          | open emulator picker overlay                      |
 | `r`          | run configured Gradle task                        |
 | `?`          | help overlay                                      |
@@ -242,7 +249,8 @@ currently active screen only.
 | `Esc` | cancel |
 
 Panel visibility, focus, active screen, and per-screen grid layouts persist in
-`~/.config/droidscope/state.json`.
+`~/.config/droidscope/state.json`. Saved project profiles persist in
+`~/.config/droidscope/workspaces.json`.
 
 ## How the Gradle panel works
 

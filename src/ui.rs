@@ -44,6 +44,10 @@ pub fn render(f: &mut Frame, app: &App, theme: &Theme) {
         render_device_selector(f, area, app, theme, idx);
     }
 
+    if app.workspace_picker.is_some() {
+        render_workspace_picker(f, area, app, theme);
+    }
+
     if app.project_picker.is_some() {
         render_project_picker(f, area, app, theme);
     }
@@ -80,6 +84,17 @@ fn render_header(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
             .fg(theme.accent)
             .add_modifier(Modifier::BOLD),
     ));
+    if let Some(active) = app.workspaces.active.as_ref().and_then(|id| {
+        app.workspaces
+            .workspaces
+            .iter()
+            .find(|workspace| &workspace.id == id)
+    }) {
+        spans.push(Span::styled(
+            format!("[{}] ", active.name),
+            Style::default().fg(theme.warn),
+        ));
+    }
     for p in PANELS {
         let visible = app.visible.contains(&p.id);
         let focused = app.focus == p.id && visible;
@@ -398,6 +413,8 @@ fn render_footer(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
             Span::styled("Tab: cycle  ", Style::default().fg(theme.muted)),
             Span::styled("d: device  ", Style::default().fg(theme.muted)),
             Span::styled("w: project  ", Style::default().fg(theme.muted)),
+            Span::styled("W: workspaces  ", Style::default().fg(theme.muted)),
+            Span::styled("S: save workspace  ", Style::default().fg(theme.muted)),
             Span::styled("e: emulator  ", Style::default().fg(theme.muted)),
             Span::styled("A: app  ", Style::default().fg(theme.muted)),
             Span::styled("B: data  ", Style::default().fg(theme.muted)),
@@ -608,6 +625,12 @@ fn render_help(f: &mut Frame, area: Rect, theme: &Theme) {
     lines.push(Line::from(
         "  w  pick Android project (scans ~/Documents, sorted by mtime)",
     ));
+    lines.push(Line::from(
+        "  W  open saved workspaces   S  save current workspace",
+    ));
+    lines.push(Line::from(
+        "  Workspaces keep project, package, task, device, logcat filters, and layout",
+    ));
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
         "Layout",
@@ -722,6 +745,99 @@ fn render_project_picker(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
         "  Enter: select   j/k: move   Esc: close",
+        Style::default().fg(theme.muted),
+    )));
+    f.render_widget(Paragraph::new(lines), inner);
+}
+
+fn render_workspace_picker(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
+    let Some(picker) = &app.workspace_picker else {
+        return;
+    };
+    let width = area.width.min(88);
+    let rows_needed = app.workspaces.workspaces.len().max(1) as u16 + 5;
+    let height = rows_needed.min(area.height);
+    let rect = Rect {
+        x: area.x + (area.width - width) / 2,
+        y: area.y + area.height.saturating_sub(height) / 2,
+        width,
+        height,
+    };
+    f.render_widget(Clear, rect);
+    let block = Block::default()
+        .title(Span::styled(
+            " saved workspaces ",
+            Style::default().fg(theme.fg).add_modifier(Modifier::BOLD),
+        ))
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(theme.accent));
+    let inner = block.inner(rect);
+    f.render_widget(block, rect);
+
+    let mut lines: Vec<Line> = Vec::new();
+    if app.workspaces.workspaces.is_empty() {
+        lines.push(Line::from(Span::styled(
+            "  no saved workspaces",
+            Style::default().fg(theme.muted),
+        )));
+    } else {
+        let name_w: usize = 22;
+        let pkg_w: usize = 24;
+        let task_w: usize = 18;
+        for (i, workspace) in app.workspaces.workspaces.iter().enumerate() {
+            let is_active = app
+                .workspaces
+                .active
+                .as_ref()
+                .map(|id| id == &workspace.id)
+                .unwrap_or(false);
+            let marker = if is_active { "●" } else { " " };
+            let row_style = if i == picker.selected {
+                Style::default()
+                    .fg(theme.bg)
+                    .bg(theme.accent)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(theme.fg)
+            };
+            let muted_style = if i == picker.selected {
+                Style::default().fg(theme.bg).bg(theme.accent)
+            } else {
+                Style::default().fg(theme.muted)
+            };
+            let warn_style = if i == picker.selected {
+                Style::default().fg(theme.bg).bg(theme.accent)
+            } else {
+                Style::default().fg(theme.warn)
+            };
+            let package = workspace.package.as_deref().unwrap_or("-");
+            let task = workspace.default_task.as_deref().unwrap_or("assembleDebug");
+            let device = workspace.preferred_device.as_deref().unwrap_or("default");
+            lines.push(Line::from(vec![
+                Span::styled(format!(" {} ", marker), row_style),
+                Span::styled(
+                    format!(
+                        "{:<width$}",
+                        truncate(&workspace.name, name_w),
+                        width = name_w
+                    ),
+                    row_style,
+                ),
+                Span::styled(
+                    format!(" {:<width$}", truncate(task, task_w), width = task_w),
+                    warn_style,
+                ),
+                Span::styled(
+                    format!(" {:<width$}", truncate(package, pkg_w), width = pkg_w),
+                    muted_style,
+                ),
+                Span::styled(format!(" {}", truncate(device, 16)), muted_style),
+            ]));
+        }
+    }
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        "  Enter: apply   s: save current   j/k: move   Esc: close",
         Style::default().fg(theme.muted),
     )));
     f.render_widget(Paragraph::new(lines), inner);

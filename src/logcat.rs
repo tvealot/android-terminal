@@ -1,6 +1,7 @@
 use std::collections::VecDeque;
 
 use regex::{Regex, RegexBuilder};
+use serde::{Deserialize, Serialize};
 
 const MAX_LINES: usize = 2000;
 
@@ -13,7 +14,7 @@ pub struct LogLine {
     pub message: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum LogLevel {
     Verbose,
     Debug,
@@ -56,6 +57,12 @@ impl LogLevel {
             Self::Error => Self::Verbose,
             Self::Fatal => Self::Verbose,
         }
+    }
+}
+
+impl Default for LogLevel {
+    fn default() -> Self {
+        Self::Verbose
     }
 }
 

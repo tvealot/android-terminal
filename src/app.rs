@@ -4,8 +4,9 @@ use std::path::PathBuf;
 use crate::adb::devices::DeviceEntry;
 use crate::adb::DeviceHandle;
 use crate::config::{
-    save_state, update_android_package, update_project_dir, Config, ScreenState, State,
-    SCREEN_COUNT,
+    save_state, save_workspaces, update_android_package, update_default_task, update_project_dir,
+    workspace_id, workspace_name, Config, ScreenState, State, WorkspaceLogcat, WorkspaceProfile,
+    WorkspaceStore, SCREEN_COUNT,
 };
 use crate::emulator_picker::EmulatorPicker;
 use crate::files::FilesState;
@@ -54,8 +55,14 @@ pub struct App {
     pub active_screen: usize,
     pub layout_editor: Option<LayoutEditor>,
     pub project_picker: Option<ProjectPicker>,
+    pub workspaces: WorkspaceStore,
+    pub workspace_picker: Option<WorkspacePicker>,
     pub emulator_picker: Option<EmulatorPicker>,
     pub zoom: Option<PanelId>,
+}
+
+pub struct WorkspacePicker {
+    pub selected: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -80,12 +87,28 @@ impl App {
     pub fn new(
         config: Config,
         state: State,
+        workspaces: WorkspaceStore,
         jvm_available: bool,
         adb_available: bool,
         device: DeviceHandle,
         fps_package: fps::FpsPackageHandle,
         perf_package: perf::PerfPackageHandle,
     ) -> Self {
+        let active_workspace = workspaces.active_workspace().cloned();
+        let mut config = config;
+        let mut state = state;
+        if let Some(workspace) = &active_workspace {
+            config.gradle.project_dir = Some(workspace.project_dir.clone());
+            config.gradle.default_task = workspace.default_task.clone();
+            config.android.package = workspace.package.clone();
+            if !workspace.screens.is_empty() {
+                state.screens = workspace.screens.clone();
+                state.active_screen = workspace.active_screen;
+            }
+            if let Ok(mut guard) = device.lock() {
+                *guard = workspace.preferred_device.clone();
+            }
+        }
         let mut screens = state.screens;
         if screens.is_empty() {
             screens.push(ScreenState {
@@ -114,7 +137,7 @@ impl App {
         let files = FilesState::new(config.gradle.project_dir.clone());
         let target_package = config.android.package.clone();
 
-        Self {
+        let mut app = Self {
             config,
             visible,
             focus,
@@ -153,9 +176,15 @@ impl App {
             active_screen,
             layout_editor: None,
             project_picker: None,
+            workspaces,
+            workspace_picker: None,
             emulator_picker: None,
             zoom: None,
+        };
+        if let Some(workspace) = active_workspace {
+            app.apply_workspace_logcat(&workspace.logcat);
         }
+        app
     }
 
     pub fn set_target_package(&mut self, package: Option<String>) {
@@ -181,6 +210,87 @@ impl App {
         }
     }
 
+    pub fn save_current_workspace(&mut self) {
+        let Some(project_dir) = self.config.gradle.project_dir.clone() else {
+            self.flash("pick a project before saving a workspace".to_string(), true);
+            return;
+        };
+        self.save_active_screen_snapshot();
+        let workspace = WorkspaceProfile {
+            id: workspace_id(&project_dir),
+            name: workspace_name(&project_dir),
+            project_dir,
+            default_task: self.config.gradle.default_task.clone(),
+            package: self.target_package.clone(),
+            preferred_device: self.current_device(),
+            logcat: WorkspaceLogcat {
+                filter: self.logcat.filter.clone(),
+                min_level: self.logcat.min_level,
+                package_filter: self.logcat.filter_package.clone(),
+                use_regex: self.logcat.use_regex,
+            },
+            screens: self.screens.clone(),
+            active_screen: self.active_screen,
+        };
+        let name = workspace.name.clone();
+        self.workspaces.upsert(workspace);
+        match save_workspaces(&self.workspaces) {
+            Ok(()) => self.flash(format!("workspace saved: {}", name), false),
+            Err(e) => self.flash(format!("save workspace: {}", e), true),
+        }
+    }
+
+    pub fn apply_workspace(&mut self, workspace: &WorkspaceProfile) {
+        self.config.gradle.project_dir = Some(workspace.project_dir.clone());
+        self.config.gradle.default_task = workspace.default_task.clone();
+        self.files.set_root(Some(workspace.project_dir.clone()));
+        self.set_target_package_without_flash(workspace.package.clone());
+        self.apply_workspace_logcat(&workspace.logcat);
+        self.logcat.lines.clear();
+        if let Ok(mut guard) = self.device.lock() {
+            *guard = workspace.preferred_device.clone();
+        }
+
+        if !workspace.screens.is_empty() {
+            let screens = workspace
+                .screens
+                .clone()
+                .into_iter()
+                .map(|screen| normalize_screen(screen, self.jvm_available))
+                .collect::<Vec<_>>();
+            self.screens = screens;
+            while self.screens.len() < SCREEN_COUNT {
+                self.screens.push(ScreenState::default());
+            }
+            self.screens.truncate(SCREEN_COUNT);
+            self.active_screen = workspace
+                .active_screen
+                .min(self.screens.len().saturating_sub(1));
+            let screen = self.screens[self.active_screen].clone();
+            self.visible = screen.visible.into_iter().collect();
+            self.focus = screen.focus;
+            self.layout = screen.layout;
+            self.zoom = None;
+            self.layout_editor = None;
+            self.input_mode = InputMode::Normal;
+        }
+
+        self.workspaces.active = Some(workspace.id.clone());
+        if let Err(e) = save_workspaces(&self.workspaces) {
+            self.flash(format!("save active workspace: {}", e), true);
+            return;
+        }
+        let _ = update_project_dir(&workspace.project_dir);
+        let _ = update_default_task(workspace.default_task.as_deref());
+        let _ = update_android_package(workspace.package.as_deref());
+        self.persist();
+        self.flash(format!("workspace: {}", workspace.name), false);
+    }
+
+    pub fn workspace_for_project(&self, path: &std::path::Path) -> Option<WorkspaceProfile> {
+        self.workspaces.find_by_project(path).cloned()
+    }
+
     pub fn set_device(&mut self, serial: Option<String>) {
         if let Ok(mut guard) = self.device.lock() {
             *guard = serial.clone();
@@ -193,6 +303,23 @@ impl App {
 
     pub fn current_device(&self) -> Option<String> {
         self.device.lock().ok().and_then(|g| g.clone())
+    }
+
+    fn set_target_package_without_flash(&mut self, package: Option<String>) {
+        self.config.android.package = package.clone();
+        self.target_package = package;
+        self.app_data.reset_for_package();
+        self.manifest.reset_for_package();
+    }
+
+    fn apply_workspace_logcat(&mut self, logcat: &WorkspaceLogcat) {
+        self.logcat.filter = logcat.filter.clone();
+        self.logcat.min_level = logcat.min_level;
+        self.logcat.filter_package = logcat.package_filter.clone();
+        self.logcat.filter_pid = None;
+        self.logcat.use_regex = logcat.use_regex;
+        self.logcat.recompile();
+        self.logcat.scroll = 0;
     }
 
     pub fn cycle_focus(&mut self, forward: bool) {

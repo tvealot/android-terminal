@@ -89,6 +89,7 @@ fn main() -> Result<()> {
 
     let cfg = config::load_config();
     let state = config::load_state();
+    let workspaces = config::load_workspaces();
     let jvm_available = gradle::jvm_available();
     let adb_available = adb::is_available();
     let device = adb::new_handle();
@@ -97,6 +98,7 @@ fn main() -> Result<()> {
     let app = App::new(
         cfg,
         state,
+        workspaces,
         jvm_available,
         adb_available,
         device.clone(),
@@ -294,9 +296,14 @@ fn handle_key(
     let raw = key;
     let key = keymap::normalize(key);
 
+    // Workspace picker overlay: consumes keys while open.
+    if app.workspace_picker.is_some() {
+        return handle_workspace_picker_key(app, key, dispatcher, runtime);
+    }
+
     // Project picker overlay: consumes keys while open.
     if app.project_picker.is_some() {
-        return handle_project_picker_key(app, key);
+        return handle_project_picker_key(app, key, dispatcher, runtime);
     }
 
     // Emulator picker overlay: consumes keys while open.
@@ -414,6 +421,12 @@ fn handle_key(
         }
         KeyCode::Char('w') => {
             open_project_picker(app, dispatcher);
+        }
+        KeyCode::Char('W') => {
+            open_workspace_picker(app);
+        }
+        KeyCode::Char('S') => {
+            app.save_current_workspace();
         }
         KeyCode::Char('e') => {
             open_emulator_picker(app, dispatcher);
@@ -854,7 +867,12 @@ fn open_project_picker(app: &mut App, dispatcher: &DispatchContext) {
     project_picker::spawn_scan(root, dispatcher.tx.clone());
 }
 
-fn handle_project_picker_key(app: &mut App, key: KeyEvent) {
+fn handle_project_picker_key(
+    app: &mut App,
+    key: KeyEvent,
+    dispatcher: &DispatchContext,
+    runtime: &mut Runtime,
+) {
     let Some(picker) = app.project_picker.as_mut() else {
         return;
     };
@@ -874,11 +892,90 @@ fn handle_project_picker_key(app: &mut App, key: KeyEvent) {
             let path = picker.entries.get(picker.selected).map(|e| e.path.clone());
             app.project_picker = None;
             if let Some(path) = path {
-                app.apply_project_dir(path);
+                if let Some(workspace) = app.workspace_for_project(&path) {
+                    apply_workspace(app, workspace, dispatcher, runtime);
+                } else {
+                    app.apply_project_dir(path);
+                }
             }
         }
         _ => {}
     }
+}
+
+fn open_workspace_picker(app: &mut App) {
+    if app.workspaces.workspaces.is_empty() {
+        app.flash(
+            "no saved workspaces; press S to save current project".to_string(),
+            true,
+        );
+        return;
+    }
+    let selected = app
+        .workspaces
+        .active
+        .as_ref()
+        .and_then(|active| {
+            app.workspaces
+                .workspaces
+                .iter()
+                .position(|w| &w.id == active)
+        })
+        .unwrap_or(0);
+    app.workspace_picker = Some(crate::app::WorkspacePicker { selected });
+}
+
+fn handle_workspace_picker_key(
+    app: &mut App,
+    key: KeyEvent,
+    dispatcher: &DispatchContext,
+    runtime: &mut Runtime,
+) {
+    let Some(picker) = app.workspace_picker.as_mut() else {
+        return;
+    };
+    let len = app.workspaces.workspaces.len();
+    match key.code {
+        KeyCode::Esc | KeyCode::Char('q') => {
+            app.workspace_picker = None;
+        }
+        KeyCode::Char('s') | KeyCode::Char('S') => {
+            app.workspace_picker = None;
+            app.save_current_workspace();
+        }
+        KeyCode::Char('j') | KeyCode::Down => {
+            if len > 0 {
+                picker.selected = (picker.selected + 1).min(len - 1);
+            }
+        }
+        KeyCode::Char('k') | KeyCode::Up => {
+            picker.selected = picker.selected.saturating_sub(1);
+        }
+        KeyCode::Enter => {
+            let workspace = app.workspaces.workspaces.get(picker.selected).cloned();
+            app.workspace_picker = None;
+            if let Some(workspace) = workspace {
+                apply_workspace(app, workspace, dispatcher, runtime);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn apply_workspace(
+    app: &mut App,
+    workspace: config::WorkspaceProfile,
+    dispatcher: &DispatchContext,
+    runtime: &mut Runtime,
+) {
+    let package_filter = workspace.logcat.package_filter.clone();
+    app.apply_workspace(&workspace);
+    if let Some(pkg) = package_filter {
+        if !pkg.trim().is_empty() {
+            apply_package_filter(app, &pkg, dispatcher);
+        }
+    }
+    runtime.restart_logcat(app, dispatcher);
 }
 
 fn open_emulator_picker(app: &mut App, dispatcher: &DispatchContext) {
