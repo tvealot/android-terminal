@@ -8,6 +8,7 @@ import org.gradle.tooling.events.task.TaskStartEvent
 import org.gradle.tooling.events.task.TaskSuccessResult
 import org.gradle.tooling.events.task.TaskFailureResult
 import org.gradle.tooling.events.task.TaskSkippedResult
+import org.gradle.tooling.model.GradleProject
 import java.io.File
 import java.io.PrintStream
 import java.time.Instant
@@ -34,6 +35,17 @@ fun main(args: Array<String>) {
     val connection = connector.connect()
 
     try {
+        if (opts.listVariants) {
+            try {
+                val gp = connection.getModel(GradleProject::class.java)
+                val variants = collectVariants(gp)
+                emit(out, variantsJson(variants))
+            } catch (e: Exception) {
+                emitError(e.message ?: e.javaClass.simpleName)
+                exitProcess(1)
+            }
+            return
+        }
         val launcher = connection.newBuild()
             .forTasks(*opts.tasks.toTypedArray())
             .addProgressListener(ProgressListener { event ->
@@ -58,16 +70,18 @@ fun main(args: Array<String>) {
     }
 }
 
-private data class Options(val project: String, val tasks: List<String>)
+private data class Options(val project: String, val tasks: List<String>, val listVariants: Boolean)
 
 private fun parseArgs(args: Array<String>): Options {
     var project: String? = null
+    var listVariants = false
     val tasks = mutableListOf<String>()
     var i = 0
     while (i < args.size) {
         when (args[i]) {
             "--project" -> { project = args[++i] }
             "--task" -> { tasks.add(args[++i]) }
+            "--list-variants" -> { listVariants = true }
             else -> { tasks.add(args[i]) }
         }
         i++
@@ -76,8 +90,37 @@ private fun parseArgs(args: Array<String>): Options {
         emitError("missing --project <dir>")
         exitProcess(2)
     }
-    if (tasks.isEmpty()) tasks.add("help")
-    return Options(project, tasks)
+    if (!listVariants && tasks.isEmpty()) tasks.add("help")
+    return Options(project, tasks, listVariants)
+}
+
+private val VARIANT_REGEX = Regex("^assemble([A-Z][A-Za-z0-9]*)$")
+private val VARIANT_EXCLUDE_SUFFIXES = listOf("AndroidTest", "UnitTest", "TestFixtures")
+
+private fun collectVariants(project: GradleProject): List<String> {
+    val out = sortedSetOf<String>()
+    walkVariants(project, out)
+    return out.toList()
+}
+
+private fun walkVariants(project: GradleProject, out: MutableSet<String>) {
+    for (task in project.tasks) {
+        val match = VARIANT_REGEX.matchEntire(task.name) ?: continue
+        val name = match.groupValues[1]
+        if (VARIANT_EXCLUDE_SUFFIXES.any { name.endsWith(it) }) continue
+        out.add(name.replaceFirstChar { it.lowercaseChar() })
+    }
+    for (child in project.children) walkVariants(child, out)
+}
+
+private fun variantsJson(items: List<String>): String {
+    val sb = StringBuilder("""{"kind":"variants","ts":"${Instant.now()}","items":[""")
+    items.forEachIndexed { i, v ->
+        if (i > 0) sb.append(',')
+        sb.append(quote(v))
+    }
+    sb.append("]}")
+    return sb.toString()
 }
 
 private fun emit(out: PrintStream, json: String) {

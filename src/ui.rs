@@ -49,6 +49,10 @@ pub fn render(f: &mut Frame, app: &App, theme: &Theme) {
         render_workspace_picker(f, area, app, theme);
     }
 
+    if app.variant_picker.is_some() {
+        render_variant_picker(f, area, app, theme);
+    }
+
     if app.project_picker.is_some() {
         render_project_picker(f, area, app, theme);
     }
@@ -545,6 +549,7 @@ fn render_help(f: &mut Frame, area: Rect, theme: &Theme) {
             .add_modifier(Modifier::BOLD),
     )));
     lines.push(Line::from("  r  run default task"));
+    lines.push(Line::from("  V  pick build variant (assemble/install)"));
     lines.push(Line::from("  j/k  navigate host processes"));
     lines.push(Line::from("  K  SIGTERM selected process"));
     lines.push(Line::from(""));
@@ -904,6 +909,96 @@ fn render_zoom(f: &mut Frame, area: Rect, id: PanelId, app: &App, theme: &Theme)
             hint,
         );
     }
+}
+
+fn render_variant_picker(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
+    let Some(picker) = &app.variant_picker else {
+        return;
+    };
+    let width = area.width.min(72);
+    let rows_needed = picker.variants.len().max(1) as u16 + 6;
+    let height = rows_needed.min(area.height);
+    let rect = Rect {
+        x: area.x + (area.width - width) / 2,
+        y: area.y + area.height.saturating_sub(height) / 2,
+        width,
+        height,
+    };
+    f.render_widget(Clear, rect);
+    let title = format!(" build variant  ({}) ", picker.mode.prefix());
+    let block = Block::default()
+        .title(Span::styled(
+            title,
+            Style::default().fg(theme.fg).add_modifier(Modifier::BOLD),
+        ))
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(theme.accent));
+    let inner = block.inner(rect);
+    f.render_widget(block, rect);
+
+    let current_task = app.config.gradle.default_task.as_deref();
+    let current_variant = current_task
+        .and_then(crate::gradle::task_to_variant)
+        .map(|(_, v)| v);
+
+    let mut lines: Vec<Line> = Vec::new();
+    let mode_line = Line::from(vec![
+        Span::styled("  task prefix: ", Style::default().fg(theme.muted)),
+        Span::styled(
+            picker.mode.prefix(),
+            Style::default()
+                .fg(theme.warn)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            "   (a=assemble  i=install  Tab toggle)",
+            Style::default().fg(theme.muted),
+        ),
+    ]);
+    lines.push(mode_line);
+    lines.push(Line::from(""));
+
+    if picker.loading {
+        lines.push(Line::from(Span::styled(
+            "  scanning variants…",
+            Style::default().fg(theme.muted),
+        )));
+    } else if picker.variants.is_empty() {
+        lines.push(Line::from(Span::styled(
+            "  no assemble<Variant> tasks found",
+            Style::default().fg(theme.muted),
+        )));
+    } else {
+        for (i, name) in picker.variants.iter().enumerate() {
+            let is_current = current_variant.as_deref() == Some(name.as_str());
+            let marker = if is_current { "●" } else { " " };
+            let row_style = if i == picker.selected {
+                Style::default()
+                    .fg(theme.bg)
+                    .bg(theme.accent)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(theme.fg)
+            };
+            let task_style = if i == picker.selected {
+                Style::default().fg(theme.bg).bg(theme.accent)
+            } else {
+                Style::default().fg(theme.muted)
+            };
+            let task = crate::gradle::variant_to_task(name, picker.mode.prefix());
+            lines.push(Line::from(vec![
+                Span::styled(format!(" {} ", marker), row_style),
+                Span::styled(format!("{:<24}", truncate(name, 24)), row_style),
+                Span::styled(format!(" {}", truncate(&task, 40)), task_style),
+            ]));
+        }
+    }
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        "  Enter: apply   a/i: prefix   Tab: toggle   j/k: move   Esc: close",
+        Style::default().fg(theme.muted),
+    )));
+    f.render_widget(Paragraph::new(lines), inner);
 }
 
 fn render_emulator_picker(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {

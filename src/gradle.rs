@@ -42,6 +42,10 @@ pub enum GradleEvent {
         ts: String,
         message: String,
     },
+    Variants {
+        ts: String,
+        items: Vec<String>,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -108,6 +112,7 @@ impl GradleState {
                 self.running = false;
                 self.last_error = Some(message);
             }
+            GradleEvent::Variants { .. } => {}
         }
     }
 }
@@ -120,6 +125,57 @@ pub fn spawn(jar: &Path, project_dir: &Path, task: &str, tx: Sender<Event>) -> s
         .arg(project_dir)
         .arg("--task")
         .arg(task)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+
+    let stdout = child.stdout.take().expect("piped stdout");
+    let stderr = child.stderr.take().expect("piped stderr");
+    let err_tx = tx.clone();
+
+    thread::spawn(move || {
+        let reader = BufReader::new(stderr);
+        for line in reader.lines().map_while(Result::ok) {
+            let _ = err_tx.send(Event::Gradle(GradleEvent::Error {
+                ts: chrono::Local::now().to_rfc3339(),
+                message: line,
+            }));
+        }
+    });
+
+    thread::spawn(move || {
+        let reader = BufReader::new(stdout);
+        for line in reader.lines().map_while(Result::ok) {
+            match serde_json::from_str::<GradleEvent>(&line) {
+                Ok(ev) => {
+                    if tx.send(Event::Gradle(ev)).is_err() {
+                        break;
+                    }
+                }
+                Err(err) => {
+                    let _ = tx.send(Event::Status {
+                        text: format!("gradle: unparseable line: {}", err),
+                        error: true,
+                    });
+                }
+            }
+        }
+        let _ = child.wait();
+    });
+    Ok(())
+}
+
+pub fn spawn_list_variants(
+    jar: &Path,
+    project_dir: &Path,
+    tx: Sender<Event>,
+) -> std::io::Result<()> {
+    let mut child = Command::new("java")
+        .arg("-jar")
+        .arg(jar)
+        .arg("--project")
+        .arg(project_dir)
+        .arg("--list-variants")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()?;
@@ -246,6 +302,33 @@ fn classify_gradle(cmd: &str) -> &'static str {
     } else {
         ""
     }
+}
+
+pub fn variant_to_task(variant: &str, prefix: &str) -> String {
+    let mut chars = variant.chars();
+    let pascal = match chars.next() {
+        Some(c) => c.to_uppercase().chain(chars).collect::<String>(),
+        None => String::new(),
+    };
+    format!("{}{}", prefix, pascal)
+}
+
+pub fn task_to_variant(task: &str) -> Option<(&'static str, String)> {
+    for prefix in ["assemble", "install"] {
+        if let Some(rest) = task.strip_prefix(prefix) {
+            if let Some(first) = rest.chars().next() {
+                if first.is_ascii_uppercase() {
+                    let mut chars = rest.chars();
+                    let head = chars.next().unwrap().to_ascii_lowercase();
+                    let mut variant = String::new();
+                    variant.push(head);
+                    variant.extend(chars);
+                    return Some((prefix, variant));
+                }
+            }
+        }
+    }
+    None
 }
 
 pub fn default_jar_path() -> PathBuf {

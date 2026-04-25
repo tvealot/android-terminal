@@ -160,7 +160,19 @@ fn run_loop(
                     app.issues.detect(&line);
                     app.logcat.push(line);
                 }
-                Event::Gradle(ev) => app.gradle.apply(ev),
+                Event::Gradle(ev) => {
+                    if let gradle::GradleEvent::Variants { items, .. } = &ev {
+                        if let Some(picker) = app.variant_picker.as_mut() {
+                            picker.variants = items.clone();
+                            picker.loading = false;
+                            picker.selected = pick_initial_variant(
+                                &picker.variants,
+                                app.config.gradle.default_task.as_deref(),
+                            );
+                        }
+                    }
+                    app.gradle.apply(ev);
+                }
                 Event::HostGradle(list) => {
                     app.gradle.host_procs = list;
                     app.gradle.clamp_selected();
@@ -316,6 +328,11 @@ fn handle_key(
         return handle_workspace_picker_key(app, key, dispatcher, runtime);
     }
 
+    // Variant picker overlay: consumes keys while open.
+    if app.variant_picker.is_some() {
+        return handle_variant_picker_key(app, key);
+    }
+
     // Project picker overlay: consumes keys while open.
     if app.project_picker.is_some() {
         return handle_project_picker_key(app, key, dispatcher, runtime);
@@ -446,6 +463,9 @@ fn handle_key(
         }
         KeyCode::Char('S') => {
             app.save_current_workspace();
+        }
+        KeyCode::Char('V') => {
+            open_variant_picker(app, dispatcher);
         }
         KeyCode::Char('e') => {
             open_emulator_picker(app, dispatcher);
@@ -995,6 +1015,102 @@ fn apply_workspace(
         }
     }
     runtime.restart_logcat(app, dispatcher);
+}
+
+fn open_variant_picker(app: &mut App, dispatcher: &DispatchContext) {
+    if !app.jvm_available {
+        app.flash("JDK not found; cannot list variants".to_string(), true);
+        return;
+    }
+    let Some(project) = app.config.gradle.project_dir.clone() else {
+        app.flash(
+            "set [gradle].project_dir before picking a variant".to_string(),
+            true,
+        );
+        return;
+    };
+    let jar = app
+        .config
+        .gradle
+        .jar_path
+        .clone()
+        .unwrap_or_else(gradle::default_jar_path);
+    if !jar.exists() {
+        app.flash(
+            format!("gradle-agent.jar not found at {}", jar.display()),
+            true,
+        );
+        return;
+    }
+    let initial_mode = app
+        .config
+        .gradle
+        .default_task
+        .as_deref()
+        .and_then(gradle::task_to_variant)
+        .map(|(prefix, _)| match prefix {
+            "install" => crate::app::VariantMode::Install,
+            _ => crate::app::VariantMode::Assemble,
+        })
+        .unwrap_or(crate::app::VariantMode::Assemble);
+    app.variant_picker = Some(crate::app::VariantPicker::new(initial_mode));
+    match gradle::spawn_list_variants(&jar, &project, dispatcher.tx.clone()) {
+        Ok(()) => app.flash("scanning Gradle variants…".to_string(), false),
+        Err(e) => {
+            app.variant_picker = None;
+            app.flash(format!("variant scan failed: {}", e), true);
+        }
+    }
+}
+
+fn pick_initial_variant(variants: &[String], current_task: Option<&str>) -> usize {
+    let Some(task) = current_task else {
+        return 0;
+    };
+    let Some((_, current_variant)) = gradle::task_to_variant(task) else {
+        return 0;
+    };
+    variants
+        .iter()
+        .position(|v| v == &current_variant)
+        .unwrap_or(0)
+}
+
+fn handle_variant_picker_key(app: &mut App, key: KeyEvent) {
+    let Some(picker) = app.variant_picker.as_mut() else {
+        return;
+    };
+    match key.code {
+        KeyCode::Esc | KeyCode::Char('q') => {
+            app.variant_picker = None;
+        }
+        KeyCode::Char('j') | KeyCode::Down => {
+            if !picker.variants.is_empty() {
+                picker.selected = (picker.selected + 1).min(picker.variants.len() - 1);
+            }
+        }
+        KeyCode::Char('k') | KeyCode::Up => {
+            picker.selected = picker.selected.saturating_sub(1);
+        }
+        KeyCode::Char('t') | KeyCode::Tab => {
+            picker.mode = picker.mode.toggle();
+        }
+        KeyCode::Char('a') => {
+            picker.mode = crate::app::VariantMode::Assemble;
+        }
+        KeyCode::Char('i') => {
+            picker.mode = crate::app::VariantMode::Install;
+        }
+        KeyCode::Enter => {
+            let mode = picker.mode;
+            let variant = picker.variants.get(picker.selected).cloned();
+            app.variant_picker = None;
+            if let Some(variant) = variant {
+                app.apply_variant(&variant, mode);
+            }
+        }
+        _ => {}
+    }
 }
 
 fn open_emulator_picker(app: &mut App, dispatcher: &DispatchContext) {

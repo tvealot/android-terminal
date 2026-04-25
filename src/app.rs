@@ -8,6 +8,7 @@ use crate::config::{
     workspace_id, workspace_name, Config, ScreenState, State, WorkspaceLogcat, WorkspaceProfile,
     WorkspaceStore, SCREEN_COUNT,
 };
+use crate::gradle::variant_to_task;
 use crate::emulator_picker::EmulatorPicker;
 use crate::files::FilesState;
 use crate::fps::{self, FpsState};
@@ -58,12 +59,53 @@ pub struct App {
     pub project_picker: Option<ProjectPicker>,
     pub workspaces: WorkspaceStore,
     pub workspace_picker: Option<WorkspacePicker>,
+    pub variant_picker: Option<VariantPicker>,
     pub emulator_picker: Option<EmulatorPicker>,
     pub zoom: Option<PanelId>,
 }
 
 pub struct WorkspacePicker {
     pub selected: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VariantMode {
+    Assemble,
+    Install,
+}
+
+impl VariantMode {
+    pub fn prefix(self) -> &'static str {
+        match self {
+            VariantMode::Assemble => "assemble",
+            VariantMode::Install => "install",
+        }
+    }
+
+    pub fn toggle(self) -> Self {
+        match self {
+            VariantMode::Assemble => VariantMode::Install,
+            VariantMode::Install => VariantMode::Assemble,
+        }
+    }
+}
+
+pub struct VariantPicker {
+    pub variants: Vec<String>,
+    pub selected: usize,
+    pub loading: bool,
+    pub mode: VariantMode,
+}
+
+impl VariantPicker {
+    pub fn new(initial_mode: VariantMode) -> Self {
+        Self {
+            variants: Vec::new(),
+            selected: 0,
+            loading: true,
+            mode: initial_mode,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -184,6 +226,7 @@ impl App {
             project_picker: None,
             workspaces,
             workspace_picker: None,
+            variant_picker: None,
             emulator_picker: None,
             zoom: None,
         };
@@ -205,6 +248,27 @@ impl App {
             },
             Err(e) => self.flash(format!("save config: {}", e), true),
         }
+    }
+
+    pub fn apply_variant(&mut self, variant: &str, mode: VariantMode) {
+        let task = variant_to_task(variant, mode.prefix());
+        self.config.gradle.default_task = Some(task.clone());
+        if let Err(e) = update_default_task(Some(task.as_str())) {
+            self.flash(format!("save default task: {}", e), true);
+            return;
+        }
+        if let Some(active_id) = self.workspaces.active.clone() {
+            if let Some(workspace) = self
+                .workspaces
+                .workspaces
+                .iter_mut()
+                .find(|w| w.id == active_id)
+            {
+                workspace.default_task = Some(task.clone());
+                let _ = save_workspaces(&self.workspaces);
+            }
+        }
+        self.flash(format!("variant: {}", task), false);
     }
 
     pub fn apply_project_dir(&mut self, path: PathBuf) {

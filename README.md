@@ -221,6 +221,7 @@ on resize.
 | `Tab` | switch tree ↔ detail in files (when preview open) |
 | `r` | refresh files tree |
 | `K` (gradle) | send `SIGTERM` to selected host process |
+| `V` | pick build variant — overlays `assemble<Variant>` / `install<Variant>` tasks discovered via Tooling API; `a`/`i` toggles prefix, Enter writes `gradle.default_task` and updates active workspace |
 | `y` (issues) | copy full stacktrace of selected issue to clipboard |
 | `C` (issues) | clear issues list |
 | `Ctrl+\` (shell) | defocus PTY (cycle to next panel) |
@@ -312,6 +313,14 @@ and `TaskFinishEvent` is emitted to stdout as a single JSON line:
 
 A Rust reader thread parses each line and pushes events through the `mpsc`
 channel into the main loop, where `GradleState::apply` updates the live view.
+
+The variant picker (`V`) reuses the same sidecar with `--list-variants`. The
+agent fetches the `GradleProject` model, walks subprojects, filters tasks
+matching `^assemble[A-Z]\w+$` (excluding `*AndroidTest`/`*UnitTest`/`*TestFixtures`),
+and emits `{"kind":"variants","items":[...]}`. Selecting a row writes the
+matching `assemble<Variant>` or `install<Variant>` task into
+`gradle.default_task` and the active workspace, so subsequent `r` runs use the
+new variant without editing `config.toml`.
 
 In parallel, a poller runs `ps -axo pid,pcpu,rss,command` every 2 s and
 classifies matching host processes (`GradleDaemon`, `gradle-wrapper.jar`,
