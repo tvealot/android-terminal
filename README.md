@@ -11,7 +11,9 @@ Inspired by [measure-sh/holo](https://github.com/measure-sh/holo), extended with
   process list (daemon / wrapper / kotlin / android / agent) with `SIGTERM` kill.
 - **App panel** — launch, force-stop, clear data, open app settings, and inspect
   package metadata for a shared target package.
-- **Data panel** — browse app-private files through `run-as`, with text preview.
+- **Data panel** — browse app-private files through `run-as`, inspect
+  Room/SQLite databases with table previews, and view SharedPreferences/DataStore
+  key/value data.
 - **Manifest panel** — inspect installed APK path, version, permissions,
   components, and deep links using `aapt`/`apkanalyzer` when available.
 - **Intents panel** — run deep links via `am start -a VIEW -d`, optionally scoped
@@ -62,7 +64,7 @@ Inspired by [measure-sh/holo](https://github.com/measure-sh/holo), extended with
 | actions   | `D` | `o` | Device actions: screenshot, screenrecord, rotate, dark mode, locale, font, battery, network, input |
 | shell     | `9` | `s` | Embedded `adb shell` PTY                                    |
 | app       | `A` | `a` | Launch / force-stop / clear data / settings / package info  |
-| data      | `B` | `b` | `run-as` app-private file browser with preview              |
+| data      | `B` | `b` | `run-as` files, SQLite tables, SharedPreferences/DataStore  |
 | manifest  | `M` | `x` | Installed APK / manifest inspector via `aapt` or `apkanalyzer` |
 | intents   | `U` | `u` | Deep link runner using `am start -a VIEW -d`                 |
 | fps       | `F` | `F` | Focused app frame pacing sample                             |
@@ -240,10 +242,11 @@ PTY is the exception — its viewport repaints on resize.
 | `j`/`k` or `↓`/`↑` | navigate app actions / data entries |
 | `Enter` (app) | run selected app action |
 | `!` (app) | confirm destructive app action (`clear data`) |
-| `r` (data) | refresh current `run-as` directory |
-| `Enter` / `→` (data) | open directory or file preview |
-| `←` / `Backspace` (data) | close preview or go to parent directory |
-| `Tab` (data) | switch to preview pane |
+| `f` / `d` / `v` (data) | files / SQLite databases / prefs+DataStore modes |
+| `r` (data) | refresh current `run-as` view |
+| `Enter` / `→` (data) | open directory/file, list DB tables, SELECT preview, or key/value preview |
+| `←` / `Backspace` (data) | close preview, go to parent directory, or return to DB list |
+| `Tab` (data) | switch between list and detail pane |
 | `r` (manifest) | refresh installed APK / manifest report |
 | `j`/`k`, `PgUp`/`PgDn` (manifest) | scroll report |
 | `/` (intents) | edit deep link URL |

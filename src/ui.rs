@@ -600,11 +600,12 @@ fn render_help(f: &mut Frame, area: Rect, theme: &Theme) {
             .add_modifier(Modifier::BOLD),
     )));
     lines.push(Line::from("  B / b  toggle/focus app data browser"));
+    lines.push(Line::from("  f files   d SQLite   v prefs/DataStore"));
     lines.push(Line::from("  P  set target package   r refresh"));
     lines.push(Line::from(
-        "  Enter open dir/file   ←/Backspace close or parent",
+        "  Enter open/list/preview   ←/Backspace close or parent",
     ));
-    lines.push(Line::from("  Tab  switch to preview pane"));
+    lines.push(Line::from("  Tab  switch list/detail pane"));
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
         "Manifest",

@@ -68,11 +68,7 @@ struct Runtime {
 }
 
 impl Runtime {
-    fn restart_logcat(
-        &mut self,
-        app: &App,
-        dispatcher: &DispatchContext,
-    ) {
+    fn restart_logcat(&mut self, app: &App, dispatcher: &DispatchContext) {
         if let Some(mut child) = self.logcat_child.take() {
             let _ = child.kill();
             let _ = child.wait();
@@ -131,8 +127,7 @@ fn main() -> Result<()> {
 
     let mut terminal = setup_terminal()?;
     let result = run_loop(&mut terminal, app, dispatcher, runtime);
-    result
-        .and(restore_terminal(&mut terminal))
+    result.and(restore_terminal(&mut terminal))
 }
 
 fn setup_terminal() -> Result<Terminal<CrosstermBackend<Stdout>>> {
@@ -310,12 +305,7 @@ fn run_loop(
     }
 }
 
-fn handle_key(
-    app: &mut App,
-    key: KeyEvent,
-    dispatcher: &DispatchContext,
-    runtime: &mut Runtime,
-) {
+fn handle_key(app: &mut App, key: KeyEvent, dispatcher: &DispatchContext, runtime: &mut Runtime) {
     // Input-mode keys take priority.
     match app.input_mode {
         InputMode::LogcatFilter => {
@@ -548,11 +538,7 @@ fn handle_key(
             );
         }
         KeyCode::Char('P') if app.focus == PanelId::Logcat => {
-            app.package_input = app
-                .logcat
-                .filter_package
-                .clone()
-                .unwrap_or_default();
+            app.package_input = app.logcat.filter_package.clone().unwrap_or_default();
             app.input_mode = InputMode::LogcatPackage;
         }
         KeyCode::Char('X') if app.focus == PanelId::Logcat => {
@@ -561,7 +547,11 @@ fn handle_key(
         }
         KeyCode::Char(' ') if app.focus == PanelId::Logcat => {
             app.logcat.paused = !app.logcat.paused;
-            let msg = if app.logcat.paused { "logcat paused" } else { "logcat resumed" };
+            let msg = if app.logcat.paused {
+                "logcat paused"
+            } else {
+                "logcat resumed"
+            };
             app.flash(msg.to_string(), false);
         }
         KeyCode::Char('C') if app.focus == PanelId::Logcat => {
@@ -570,7 +560,11 @@ fn handle_key(
         }
         KeyCode::Char('R') if app.focus == PanelId::Logcat => {
             app.logcat.toggle_regex();
-            let msg = if app.logcat.use_regex { "logcat: regex on" } else { "logcat: regex off" };
+            let msg = if app.logcat.use_regex {
+                "logcat: regex on"
+            } else {
+                "logcat: regex off"
+            };
             app.flash(msg.to_string(), false);
         }
         KeyCode::Char('j') | KeyCode::Down if app.focus == PanelId::Logcat => {
@@ -651,8 +645,7 @@ fn handle_key(
         }
         KeyCode::Char('j') | KeyCode::Down if app.focus == PanelId::Devices => {
             if !app.devices.is_empty() {
-                app.devices_selected =
-                    (app.devices_selected + 1).min(app.devices.len() - 1);
+                app.devices_selected = (app.devices_selected + 1).min(app.devices.len() - 1);
             }
         }
         KeyCode::Char('k') | KeyCode::Up if app.focus == PanelId::Devices => {
@@ -670,11 +663,7 @@ fn handle_key(
     }
 }
 
-fn handle_mouse(
-    app: &mut App,
-    mouse: MouseEvent,
-    term_size: Size,
-) {
+fn handle_mouse(app: &mut App, mouse: MouseEvent, term_size: Size) {
     let Some((panel, area)) = panel_at(app, term_size, mouse.column, mouse.row) else {
         return;
     };
@@ -746,16 +735,16 @@ fn mouse_scroll(app: &mut App, panel: PanelId, up: bool) {
             }
         }
         PanelId::AppData => {
-            if app.app_data.preview.is_some() && app.app_data.preview_focused {
+            if app_data_detail_open(app) && app.app_data.preview_focused {
                 if up {
                     app.app_data.preview_scroll = app.app_data.preview_scroll.saturating_sub(3);
                 } else {
                     app.app_data.preview_scroll = app.app_data.preview_scroll.saturating_add(3);
                 }
             } else if up {
-                app.app_data.move_up();
+                app.app_data.move_active_up();
             } else {
-                app.app_data.move_down();
+                app.app_data.move_active_down();
             }
         }
         PanelId::Manifest => {
@@ -769,25 +758,27 @@ fn mouse_scroll(app: &mut App, panel: PanelId, up: bool) {
     }
 }
 
-fn mouse_left_click(
-    app: &mut App,
-    panel: PanelId,
-    area: Rect,
-    x: u16,
-    y: u16,
-) {
+fn mouse_left_click(app: &mut App, panel: PanelId, area: Rect, x: u16, y: u16) {
     let inner = inset(area);
     match panel {
         PanelId::Processes => {
             if let Some(row) = local_row(inner, x, y).and_then(|r| r.checked_sub(1)) {
-                select_row(&mut app.processes.selected, app.processes.processes.len(), row);
+                select_row(
+                    &mut app.processes.selected,
+                    app.processes.processes.len(),
+                    row,
+                );
             }
         }
         PanelId::Gradle => {
             if let Some(row) = local_row(inner, x, y) {
                 let active = app.gradle.active.len() as u16;
                 if let Some(proc_row) = row.checked_sub(active) {
-                    select_row(&mut app.gradle.selected, app.gradle.host_procs.len(), proc_row);
+                    select_row(
+                        &mut app.gradle.selected,
+                        app.gradle.host_procs.len(),
+                        proc_row,
+                    );
                 }
             }
         }
@@ -839,7 +830,9 @@ fn click_files(app: &mut App, inner: Rect, x: u16, y: u16) {
         return;
     }
     let flat = app.files.flatten_visible();
-    let visible_height = tree.height.saturating_sub(if app.files.detail_open { 2 } else { 1 });
+    let visible_height = tree
+        .height
+        .saturating_sub(if app.files.detail_open { 2 } else { 1 });
     let selected = app.files.selected_index.min(flat.len().saturating_sub(1));
     let start = if selected >= visible_height as usize {
         selected - visible_height as usize + 1
@@ -883,7 +876,7 @@ fn click_device_actions(app: &mut App, inner: Rect, x: u16, y: u16) {
 }
 
 fn click_app_data(app: &mut App, inner: Rect, x: u16, y: u16) {
-    let list = if app.app_data.preview.is_some() {
+    let list = if app_data_detail_open(app) {
         let cols = split_cols(inner, 44, 56);
         if contains(cols[1], x, y) {
             app.app_data.preview_focused = true;
@@ -894,20 +887,43 @@ fn click_app_data(app: &mut App, inner: Rect, x: u16, y: u16) {
     } else {
         inner
     };
-    let Some(row) = local_row(list, x, y).and_then(|r| r.checked_sub(2)) else {
+    let Some(row) = local_row(list, x, y).and_then(|r| r.checked_sub(3)) else {
         return;
     };
-    let visible_height = list.height.saturating_sub(2) as usize;
-    let selected = app
-        .app_data
-        .selected
-        .min(app.app_data.entries.len().saturating_sub(1));
+    let visible_height = list.height.saturating_sub(3) as usize;
+    let (selected, len) = match app.app_data.mode {
+        crate::app_data::AppDataMode::Files => (app.app_data.selected, app.app_data.entries.len()),
+        crate::app_data::AppDataMode::Databases if app.app_data.current_database.is_some() => {
+            (app.app_data.table_selected, app.app_data.tables.len())
+        }
+        crate::app_data::AppDataMode::Databases => {
+            (app.app_data.db_selected, app.app_data.databases.len())
+        }
+        crate::app_data::AppDataMode::Preferences => (
+            app.app_data.pref_selected,
+            app.app_data.preference_files.len(),
+        ),
+    };
+    let selected = selected.min(len.saturating_sub(1));
     let start = if selected >= visible_height {
         selected - visible_height + 1
     } else {
         0
     };
-    select_row_from_start(&mut app.app_data.selected, app.app_data.entries.len(), start, row);
+    match app.app_data.mode {
+        crate::app_data::AppDataMode::Files => {
+            select_row_from_start(&mut app.app_data.selected, len, start, row);
+        }
+        crate::app_data::AppDataMode::Databases if app.app_data.current_database.is_some() => {
+            select_row_from_start(&mut app.app_data.table_selected, len, start, row);
+        }
+        crate::app_data::AppDataMode::Databases => {
+            select_row_from_start(&mut app.app_data.db_selected, len, start, row);
+        }
+        crate::app_data::AppDataMode::Preferences => {
+            select_row_from_start(&mut app.app_data.pref_selected, len, start, row);
+        }
+    }
 }
 
 fn select_delta(selected: &mut usize, len: usize, up: bool) {
@@ -935,12 +951,7 @@ fn select_row_from_start(selected: &mut usize, len: usize, start: usize, row: u1
     }
 }
 
-fn panel_at(
-    app: &App,
-    term_size: Size,
-    x: u16,
-    y: u16,
-) -> Option<(PanelId, Rect)> {
+fn panel_at(app: &App, term_size: Size, x: u16, y: u16) -> Option<(PanelId, Rect)> {
     let full = Rect {
         x: 0,
         y: 0,
@@ -1225,11 +1236,7 @@ fn update_shell_size(app: &mut App, term_rows: u16, term_cols: u16) {
     app.shell.resize(inner_h, inner_w);
 }
 
-fn switch_to_selected_device(
-    app: &mut App,
-    dispatcher: &DispatchContext,
-    runtime: &mut Runtime,
-) {
+fn switch_to_selected_device(app: &mut App, dispatcher: &DispatchContext, runtime: &mut Runtime) {
     let Some(entry) = app.devices.get(app.devices_selected).cloned() else {
         app.flash("no devices connected".to_string(), true);
         return;
@@ -1304,7 +1311,10 @@ fn handle_device_selector(
 fn open_project_picker(app: &mut App, dispatcher: &DispatchContext) {
     let root = project_picker::default_root();
     app.project_picker = Some(project_picker::ProjectPicker::new(root.clone()));
-    app.flash(format!("scanning {} for Android projects…", root.display()), false);
+    app.flash(
+        format!("scanning {} for Android projects…", root.display()),
+        false,
+    );
     project_picker::spawn_scan(root, dispatcher.tx.clone());
 }
 
@@ -1799,11 +1809,7 @@ fn start_app_action(app: &mut App, dispatcher: &DispatchContext, confirm: bool) 
     crate::app_control::spawn_action(app.device.clone(), package, action, dispatcher.tx.clone());
 }
 
-fn handle_device_actions_key(
-    app: &mut App,
-    key: KeyEvent,
-    dispatcher: &DispatchContext,
-) -> bool {
+fn handle_device_actions_key(app: &mut App, key: KeyEvent, dispatcher: &DispatchContext) -> bool {
     match key.code {
         KeyCode::Char('j') | KeyCode::Down => {
             app.device_actions.move_down();
@@ -1848,11 +1854,7 @@ fn start_device_action(app: &mut App, dispatcher: &DispatchContext) {
     }
 }
 
-fn handle_device_action_input_key(
-    app: &mut App,
-    key: KeyEvent,
-    dispatcher: &DispatchContext,
-) {
+fn handle_device_action_input_key(app: &mut App, key: KeyEvent, dispatcher: &DispatchContext) {
     match key.code {
         KeyCode::Esc => {
             app.input_mode = InputMode::Normal;
@@ -1893,7 +1895,7 @@ fn spawn_device_action(
 }
 
 fn handle_app_data_key(app: &mut App, key: KeyEvent, dispatcher: &DispatchContext) -> bool {
-    if app.app_data.preview.is_some() && app.app_data.preview_focused {
+    if app_data_detail_open(app) && app.app_data.preview_focused {
         return match key.code {
             KeyCode::Char('j') | KeyCode::Down => {
                 app.app_data.preview_scroll = app.app_data.preview_scroll.saturating_add(1);
@@ -1925,16 +1927,28 @@ fn handle_app_data_key(app: &mut App, key: KeyEvent, dispatcher: &DispatchContex
             app.input_mode = InputMode::TargetPackage;
             true
         }
+        KeyCode::Char('f') => {
+            switch_app_data_mode(app, dispatcher, crate::app_data::AppDataMode::Files);
+            true
+        }
+        KeyCode::Char('d') => {
+            switch_app_data_mode(app, dispatcher, crate::app_data::AppDataMode::Databases);
+            true
+        }
+        KeyCode::Char('v') => {
+            switch_app_data_mode(app, dispatcher, crate::app_data::AppDataMode::Preferences);
+            true
+        }
         KeyCode::Char('r') => {
-            refresh_app_data(app, dispatcher, app.app_data.path.clone());
+            refresh_app_data_current(app, dispatcher);
             true
         }
         KeyCode::Char('j') | KeyCode::Down => {
-            app.app_data.move_down();
+            app.app_data.move_active_down();
             true
         }
         KeyCode::Char('k') | KeyCode::Up => {
-            app.app_data.move_up();
+            app.app_data.move_active_up();
             true
         }
         KeyCode::Enter | KeyCode::Right => {
@@ -1942,26 +1956,82 @@ fn handle_app_data_key(app: &mut App, key: KeyEvent, dispatcher: &DispatchContex
             true
         }
         KeyCode::Left => {
-            if app.app_data.preview.is_some() {
+            if app_data_detail_open(app) {
                 app.app_data.close_preview();
+            } else if app.app_data.mode == crate::app_data::AppDataMode::Databases
+                && app.app_data.current_database.is_some()
+            {
+                app.app_data.current_database = None;
+                app.app_data.tables.clear();
+                app.app_data.table_selected = 0;
             } else if let Some(parent) = app.app_data.parent_path() {
                 refresh_app_data(app, dispatcher, parent);
             }
             true
         }
         KeyCode::Backspace => {
-            if app.app_data.preview.is_some() {
+            if app_data_detail_open(app) {
                 app.app_data.close_preview();
+            } else if app.app_data.mode == crate::app_data::AppDataMode::Databases
+                && app.app_data.current_database.is_some()
+            {
+                app.app_data.current_database = None;
+                app.app_data.tables.clear();
+                app.app_data.table_selected = 0;
             } else if let Some(parent) = app.app_data.parent_path() {
                 refresh_app_data(app, dispatcher, parent);
             }
             true
         }
-        KeyCode::Tab if app.app_data.preview.is_some() => {
-            app.app_data.preview_focused = true;
+        KeyCode::Tab if app_data_detail_open(app) => {
+            app.app_data.preview_focused = !app.app_data.preview_focused;
             true
         }
         _ => false,
+    }
+}
+
+fn app_data_detail_open(app: &App) -> bool {
+    app.app_data.preview.is_some()
+        || app.app_data.table_preview.is_some()
+        || app.app_data.preference_preview.is_some()
+}
+
+fn switch_app_data_mode(
+    app: &mut App,
+    dispatcher: &DispatchContext,
+    mode: crate::app_data::AppDataMode,
+) {
+    app.app_data.switch_mode(mode);
+    match mode {
+        crate::app_data::AppDataMode::Files if app.app_data.entries.is_empty() => {
+            refresh_app_data(app, dispatcher, app.app_data.path.clone());
+        }
+        crate::app_data::AppDataMode::Databases if app.app_data.databases.is_empty() => {
+            refresh_app_databases(app, dispatcher);
+        }
+        crate::app_data::AppDataMode::Preferences if app.app_data.preference_files.is_empty() => {
+            refresh_app_preferences(app, dispatcher);
+        }
+        _ => {}
+    }
+}
+
+fn refresh_app_data_current(app: &mut App, dispatcher: &DispatchContext) {
+    match app.app_data.mode {
+        crate::app_data::AppDataMode::Files => {
+            refresh_app_data(app, dispatcher, app.app_data.path.clone());
+        }
+        crate::app_data::AppDataMode::Databases => {
+            if let Some(database) = app.app_data.current_database.clone() {
+                refresh_app_tables(app, dispatcher, database);
+            } else {
+                refresh_app_databases(app, dispatcher);
+            }
+        }
+        crate::app_data::AppDataMode::Preferences => {
+            refresh_app_preferences(app, dispatcher);
+        }
     }
 }
 
@@ -1975,7 +2045,50 @@ fn refresh_app_data(app: &mut App, dispatcher: &DispatchContext, path: String) {
     crate::app_data::spawn_list(app.device.clone(), package, path, dispatcher.tx.clone());
 }
 
+fn refresh_app_databases(app: &mut App, dispatcher: &DispatchContext) {
+    let Some(package) = app.target_package.clone() else {
+        app.flash("set target package with P".to_string(), true);
+        return;
+    };
+    app.app_data.loading = true;
+    app.app_data.last_error = None;
+    crate::app_data::spawn_list_databases(app.device.clone(), package, dispatcher.tx.clone());
+}
+
+fn refresh_app_tables(app: &mut App, dispatcher: &DispatchContext, database: String) {
+    let Some(package) = app.target_package.clone() else {
+        app.flash("set target package with P".to_string(), true);
+        return;
+    };
+    app.app_data.loading = true;
+    app.app_data.last_error = None;
+    crate::app_data::spawn_list_tables(
+        app.device.clone(),
+        package,
+        database,
+        dispatcher.tx.clone(),
+    );
+}
+
+fn refresh_app_preferences(app: &mut App, dispatcher: &DispatchContext) {
+    let Some(package) = app.target_package.clone() else {
+        app.flash("set target package with P".to_string(), true);
+        return;
+    };
+    app.app_data.loading = true;
+    app.app_data.last_error = None;
+    crate::app_data::spawn_list_preferences(app.device.clone(), package, dispatcher.tx.clone());
+}
+
 fn open_selected_app_data(app: &mut App, dispatcher: &DispatchContext) {
+    match app.app_data.mode {
+        crate::app_data::AppDataMode::Files => open_selected_app_file(app, dispatcher),
+        crate::app_data::AppDataMode::Databases => open_selected_app_database(app, dispatcher),
+        crate::app_data::AppDataMode::Preferences => open_selected_app_preference(app, dispatcher),
+    }
+}
+
+fn open_selected_app_file(app: &mut App, dispatcher: &DispatchContext) {
     let Some(entry) = app.app_data.selected_entry().cloned() else {
         refresh_app_data(app, dispatcher, app.app_data.path.clone());
         return;
@@ -2006,6 +2119,64 @@ fn open_selected_app_data(app: &mut App, dispatcher: &DispatchContext) {
             );
         }
     }
+}
+
+fn open_selected_app_database(app: &mut App, dispatcher: &DispatchContext) {
+    let Some(package) = app.target_package.clone() else {
+        app.flash("set target package with P".to_string(), true);
+        return;
+    };
+    if app.app_data.current_database.is_none() {
+        let Some(database) = app.app_data.selected_database().cloned() else {
+            refresh_app_databases(app, dispatcher);
+            return;
+        };
+        app.app_data.loading = true;
+        app.app_data.last_error = None;
+        crate::app_data::spawn_list_tables(
+            app.device.clone(),
+            package,
+            database.path,
+            dispatcher.tx.clone(),
+        );
+        return;
+    }
+
+    let Some(database) = app.app_data.current_database.clone() else {
+        return;
+    };
+    let Some(table) = app.app_data.selected_table().cloned() else {
+        refresh_app_tables(app, dispatcher, database);
+        return;
+    };
+    app.app_data.loading = true;
+    app.app_data.last_error = None;
+    crate::app_data::spawn_preview_table(
+        app.device.clone(),
+        package,
+        database,
+        table.name,
+        dispatcher.tx.clone(),
+    );
+}
+
+fn open_selected_app_preference(app: &mut App, dispatcher: &DispatchContext) {
+    let Some(package) = app.target_package.clone() else {
+        app.flash("set target package with P".to_string(), true);
+        return;
+    };
+    let Some(file) = app.app_data.selected_preference_file().cloned() else {
+        refresh_app_preferences(app, dispatcher);
+        return;
+    };
+    app.app_data.loading = true;
+    app.app_data.last_error = None;
+    crate::app_data::spawn_preview_preference(
+        app.device.clone(),
+        package,
+        file,
+        dispatcher.tx.clone(),
+    );
 }
 
 fn handle_manifest_key(app: &mut App, key: KeyEvent, dispatcher: &DispatchContext) -> bool {
@@ -2131,6 +2302,11 @@ fn app_data_event_matches_target(app: &App, event: &crate::app_data::AppDataEven
     match event {
         crate::app_data::AppDataEvent::Listed { package, .. }
         | crate::app_data::AppDataEvent::Previewed { package, .. }
+        | crate::app_data::AppDataEvent::DatabasesListed { package, .. }
+        | crate::app_data::AppDataEvent::TablesListed { package, .. }
+        | crate::app_data::AppDataEvent::TablePreviewed { package, .. }
+        | crate::app_data::AppDataEvent::PreferencesListed { package, .. }
+        | crate::app_data::AppDataEvent::PreferencePreviewed { package, .. }
         | crate::app_data::AppDataEvent::Error { package, .. } => package == target,
     }
 }
@@ -2144,6 +2320,29 @@ fn app_data_status(event: &crate::app_data::AppDataEvent) -> Option<(String, boo
         crate::app_data::AppDataEvent::Previewed { preview, .. } => {
             Some((format!("data: preview {}", preview.path), false))
         }
+        crate::app_data::AppDataEvent::DatabasesListed { databases, .. } => {
+            Some((format!("data: {} database files", databases.len()), false))
+        }
+        crate::app_data::AppDataEvent::TablesListed {
+            database, tables, ..
+        } => Some((
+            format!("data: {} tables in {}", tables.len(), database),
+            false,
+        )),
+        crate::app_data::AppDataEvent::TablePreviewed { preview, .. } => Some((
+            format!(
+                "data: SELECT preview {}.{}",
+                preview.database, preview.table
+            ),
+            false,
+        )),
+        crate::app_data::AppDataEvent::PreferencesListed { files, .. } => {
+            Some((format!("data: {} preference files", files.len()), false))
+        }
+        crate::app_data::AppDataEvent::PreferencePreviewed { preview, .. } => Some((
+            format!("data: {} keys in {}", preview.rows.len(), preview.file.path),
+            false,
+        )),
         crate::app_data::AppDataEvent::Error { path, message, .. } => {
             Some((format!("data {}: {}", path, message), true))
         }
@@ -2164,7 +2363,10 @@ fn copy_selected_stacktrace(app: &mut App) {
     };
     let bytes = text.len();
     match clipboard::copy(&text) {
-        Ok(tool) => app.flash(format!("copied stacktrace ({} bytes via {})", bytes, tool), false),
+        Ok(tool) => app.flash(
+            format!("copied stacktrace ({} bytes via {})", bytes, tool),
+            false,
+        ),
         Err(e) => app.flash(format!("copy failed: {}", e), true),
     }
 }
