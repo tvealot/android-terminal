@@ -6,7 +6,7 @@ use ratatui::Frame;
 
 use crate::app::App;
 use crate::logcat::{LogLevel, LogcatState};
-use crate::theme::Theme;
+use crate::theme::{hashed_color, Theme};
 
 pub fn render(f: &mut Frame, area: Rect, app: &App, theme: &Theme, focused: bool) {
     let border_color = if focused { theme.accent } else { theme.surface };
@@ -89,7 +89,7 @@ fn render_line<'a>(line: &'a crate::logcat::LogLine, state: &LogcatState, theme:
         ),
         Span::styled(
             format!("{:<20} ", truncate(&line.tag, 20)),
-            Style::default().fg(theme.accent),
+            Style::default().fg(hashed_color(line.tag.trim(), theme)),
         ),
     ];
     spans.extend(highlight(&line.message, state, theme));

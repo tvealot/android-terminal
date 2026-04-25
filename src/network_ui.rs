@@ -105,7 +105,7 @@ fn render_line(line: &LogLine, width: usize, theme: &Theme) -> Line<'static> {
         ),
         Span::styled(
             format!("{:<14} ", shrink(&line.tag, 14)),
-            Style::default().fg(theme.accent),
+            Style::default().fg(crate::theme::hashed_color(line.tag.trim(), theme)),
         ),
         Span::styled(
             shrink(&line.message, message_width),

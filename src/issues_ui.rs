@@ -77,7 +77,7 @@ pub fn render(f: &mut Frame, area: Rect, app: &App, theme: &Theme, focused: bool
                     Style::default().fg(theme.muted),
                 ),
                 Span::styled(format!("pid={:<6} ", issue.pid), Style::default().fg(theme.muted)),
-                Span::styled(format!("{:<18} ", truncate(&issue.tag, 18)), Style::default().fg(theme.accent)),
+                Span::styled(format!("{:<18} ", truncate(&issue.tag, 18)), Style::default().fg(crate::theme::hashed_color(issue.tag.trim(), theme))),
                 Span::styled(
                     format!("{}{}{}", truncate(&issue.excerpt, inner.width as usize / 2), count_marker, detail_marker),
                     row_style,
