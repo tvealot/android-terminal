@@ -19,13 +19,24 @@ Inspired by [measure-sh/holo](https://github.com/measure-sh/holo), extended with
 - **Device Actions panel** — screenshot, screenrecord, rotation, dark mode,
   locale, font scale, battery simulation, airplane/Wi-Fi/data toggles, text
   input, and tap.
+- **Perf panel** — periodic `dumpsys meminfo` + `dumpsys gfxinfo` + `/proc/<pid>/stat`
+  sampler for the shared target package: PSS/RSS, App Summary breakdown, CPU%,
+  jank %, frame p50/p90/p95/p99, GC marker count, with sparkline history.
+- **FPS panel** — focused-app frame pacing sample.
 - **Issues panel** — detects Java/Kotlin stacktraces in logcat and captures the
   full trace for a detail view.
 - **Project picker** (`w`) — scans `~/Documents` for Android projects (directories
   containing `gradlew`), sorted by mtime. Selection updates `files` root and
   writes `gradle.project_dir` back to `config.toml`.
+- **Saved workspaces** (`S` save / `W` switch) — bind project dir, default Gradle
+  task, target package, preferred device, logcat filters, and per-screen layouts
+  to a named profile in `workspaces.json`.
+- **Emulator picker** (`e`) — list and launch installed AVDs.
 - **Embedded `adb shell`** (`s`/`9`) — real PTY with `vt100` rendering; keys route
   to the shell while focused, `Ctrl+\` to defocus.
+- **Zoom** (`z`) — fullscreen the focused panel; `Esc` to restore.
+- **Cyrillic keymap** — Russian layout chars normalized to QWERTY equivalents,
+  so hotkeys work without switching layout.
 
 ## Stack
 
@@ -55,6 +66,7 @@ Inspired by [measure-sh/holo](https://github.com/measure-sh/holo), extended with
 | manifest  | `M` | `x` | Installed APK / manifest inspector via `aapt` or `apkanalyzer` |
 | intents   | `U` | `u` | Deep link runner using `am start -a VIEW -d`                 |
 | fps       | `F` | `F` | Focused app frame pacing sample                             |
+| perf      | `H` | `H` | meminfo + CPU + gfxinfo jank + GC markers, sparkline history |
 
 ## Layout
 
@@ -175,6 +187,7 @@ on resize.
 | `0`          | open grid layout editor                           |
 | `l/m/g/p/i/f/n/v/o/s/a/b/x/u/F/H` | focus panel              |
 | `Tab` / `Shift+Tab` | cycle focus across visible panels          |
+| `z`          | zoom focused panel (`Esc` restores)               |
 | `d`          | open device selector overlay                      |
 | `w`          | open project picker overlay                       |
 | `W`          | open saved workspace overlay                      |
@@ -248,6 +261,19 @@ Actions include screenshot (`droidscope-screenshot-*.png`), 10-second
 screenrecord (`droidscope-screenrecord-*.mp4`), rotate right, dark mode
 on/off, locale, font scale, battery unplug/reset, airplane mode, Wi-Fi,
 mobile data, `input text`, and `input tap x y`.
+
+### Perf / FPS
+
+| Key | Action |
+| --- | ------ |
+| `H` | toggle / focus Perf panel |
+| `F` | toggle / focus FPS panel |
+| `P` (perf/fps) | set shared target package |
+| `X` (perf/fps) | clear target package, reset history |
+
+Perf samples every 2 s via `dumpsys meminfo`, `dumpsys gfxinfo`, and
+`/proc/<pid>/stat`. GC markers fire on Dalvik heap drops ≥ 512 KB. The
+ring buffer keeps 60 samples (~2 minutes).
 
 ### Layout editor (after `0`)
 
