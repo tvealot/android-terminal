@@ -5,13 +5,15 @@ logcat, issues triage, and an embedded `adb shell`.
 
 Inspired by [measure-sh/holo](https://github.com/measure-sh/holo), extended with:
 
-- **Toggleable panels** (`1..9`, `A`, `B`, `U`, `F`) with a grid **layout editor**
+- **Toggleable panels** (`1..9`, `A`, `B`, `M`, `U`, `F`, `H`) with a grid **layout editor**
   (`0`) — state persists across runs.
 - **Gradle panel** — live Tooling-API task stream (JVM sidecar) plus a host
   process list (daemon / wrapper / kotlin / android / agent) with `SIGTERM` kill.
 - **App panel** — launch, force-stop, clear data, open app settings, and inspect
   package metadata for a shared target package.
 - **Data panel** — browse app-private files through `run-as`, with text preview.
+- **Manifest panel** — inspect installed APK path, version, permissions,
+  components, and deep links using `aapt`/`apkanalyzer` when available.
 - **Intents panel** — run deep links via `am start -a VIEW -d`, optionally scoped
   to the shared target package.
 - **Issues panel** — detects Java/Kotlin stacktraces in logcat and captures the
@@ -46,6 +48,7 @@ Inspired by [measure-sh/holo](https://github.com/measure-sh/holo), extended with
 | shell     | `9` | `s` | Embedded `adb shell` PTY                                    |
 | app       | `A` | `a` | Launch / force-stop / clear data / settings / package info  |
 | data      | `B` | `b` | `run-as` app-private file browser with preview              |
+| manifest  | `M` | `x` | Installed APK / manifest inspector via `aapt` or `apkanalyzer` |
 | intents   | `U` | `u` | Deep link runner using `am start -a VIEW -d`                 |
 | fps       | `F` | `F` | Focused app frame pacing sample                             |
 
@@ -71,6 +74,7 @@ src/
   gradle_ui.rs
   app_control.rs / app_control_ui.rs
   app_data.rs / app_data_ui.rs
+  manifest.rs / manifest_ui.rs
   intents.rs / intents_ui.rs
   monitor.rs / monitor_ui.rs
   processes.rs / processes_ui.rs
@@ -155,11 +159,11 @@ on resize.
 
 | Key          | Action                                            |
 | ------------ | ------------------------------------------------- |
-| `1..9`, `A`, `B`, `U`, `F` | toggle panel visibility             |
+| `1..9`, `A`, `B`, `M`, `U`, `F`, `H` | toggle panel visibility     |
 | `[` / `]`    | switch previous / next layout screen; each screen keeps its own panels, focus, and grid layout |
 | `Alt+1..4`   | switch directly to layout screen 1..4, if your keyboard has Alt |
 | `0`          | open grid layout editor                           |
-| `l/m/g/p/i/f/n/v/s/a/b/u/F` | focus panel                   |
+| `l/m/g/p/i/f/n/v/s/a/b/x/u/F/H` | focus panel                |
 | `Tab` / `Shift+Tab` | cycle focus across visible panels          |
 | `d`          | open device selector overlay                      |
 | `w`          | open project picker overlay                       |
@@ -196,13 +200,14 @@ on resize.
 | `C` (issues) | clear issues list |
 | `Ctrl+\` (shell) | defocus PTY (cycle to next panel) |
 
-### App / Data / Intents
+### App / Data / Manifest / Intents
 
 | Key | Action |
 | --- | ------ |
 | `P` | set shared target package (`[android].package`) |
 | `A` / `a` | toggle / focus App Control |
 | `B` / `b` | toggle / focus App Data |
+| `M` / `x` | toggle / focus Manifest inspector |
 | `U` / `u` | toggle / focus Intents |
 | `j`/`k` or `↓`/`↑` | navigate app actions / data entries |
 | `Enter` (app) | run selected app action |
@@ -211,6 +216,8 @@ on resize.
 | `Enter` / `→` (data) | open directory or file preview |
 | `←` / `Backspace` (data) | close preview or go to parent directory |
 | `Tab` (data) | switch to preview pane |
+| `r` (manifest) | refresh installed APK / manifest report |
+| `j`/`k`, `PgUp`/`PgDn` (manifest) | scroll report |
 | `/` (intents) | edit deep link URL |
 | `T` (intents) | toggle resolver vs explicit target package |
 | `C` (intents) | clear deep link URL |

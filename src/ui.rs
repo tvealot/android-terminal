@@ -10,7 +10,7 @@ use crate::panel::{def, PanelId, PANELS};
 use crate::theme::Theme;
 use crate::{
     app_control_ui, app_data_ui, devices_ui, files_ui, fps_ui, gradle_ui, intents_ui, issues_ui,
-    logcat_ui, monitor_ui, network_ui, perf_ui, processes_ui, shell_ui,
+    logcat_ui, manifest_ui, monitor_ui, network_ui, perf_ui, processes_ui, shell_ui,
 };
 
 pub fn render(f: &mut Frame, app: &App, theme: &Theme) {
@@ -241,7 +241,7 @@ fn render_layout_editor(f: &mut Frame, area: Rect, editor: &LayoutEditor, theme:
         Span::raw("move  "),
         Span::styled("v ", Style::default().fg(theme.warn)),
         Span::raw("toggle selection  "),
-        Span::styled("1..9/A/B/U/F/H ", Style::default().fg(theme.warn)),
+        Span::styled("1..9/A/B/M/U/F/H ", Style::default().fg(theme.warn)),
         Span::raw("assign panel"),
     ]));
     lines.push(Line::from(vec![
@@ -282,6 +282,7 @@ fn render_panel(f: &mut Frame, area: Rect, id: PanelId, app: &App, theme: &Theme
         PanelId::Shell => shell_ui::render(f, area, app, theme, focused),
         PanelId::AppControl => app_control_ui::render(f, area, app, theme, focused),
         PanelId::AppData => app_data_ui::render(f, area, app, theme, focused),
+        PanelId::Manifest => manifest_ui::render(f, area, app, theme, focused),
         PanelId::Intents => intents_ui::render(f, area, app, theme, focused),
         PanelId::Fps => fps_ui::render(f, area, app, theme, focused),
         PanelId::Perf => perf_ui::render(f, area, app, theme, focused),
@@ -400,6 +401,7 @@ fn render_footer(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
             Span::styled("e: emulator  ", Style::default().fg(theme.muted)),
             Span::styled("A: app  ", Style::default().fg(theme.muted)),
             Span::styled("B: data  ", Style::default().fg(theme.muted)),
+            Span::styled("M: manifest  ", Style::default().fg(theme.muted)),
             Span::styled("U: intents  ", Style::default().fg(theme.muted)),
             Span::styled("F: fps  ", Style::default().fg(theme.muted)),
             Span::styled("H: perf  ", Style::default().fg(theme.muted)),
@@ -417,7 +419,7 @@ fn render_footer(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
 
 fn render_help(f: &mut Frame, area: Rect, theme: &Theme) {
     let width = area.width.min(60);
-    let height = area.height.min(56);
+    let height = area.height.min(62);
     let rect = Rect {
         x: area.x + (area.width - width) / 2,
         y: area.y + (area.height - height) / 2,
@@ -535,6 +537,16 @@ fn render_help(f: &mut Frame, area: Rect, theme: &Theme) {
     lines.push(Line::from("  Tab  switch to preview pane"));
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
+        "Manifest",
+        Style::default()
+            .fg(theme.accent)
+            .add_modifier(Modifier::BOLD),
+    )));
+    lines.push(Line::from("  M / x  toggle/focus APK manifest inspector"));
+    lines.push(Line::from("  P  set target package   r refresh"));
+    lines.push(Line::from("  j/k or PgUp/PgDn  scroll report"));
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
         "Intents",
         Style::default()
             .fg(theme.accent)
@@ -608,7 +620,7 @@ fn render_help(f: &mut Frame, area: Rect, theme: &Theme) {
     ));
     lines.push(Line::from("  0  open grid layout editor"));
     lines.push(Line::from(
-        "  In editor: h/j/k/l move  v select  1..9/A/B/U/F/H assign",
+        "  In editor: h/j/k/l move  v select  1..9/A/B/M/U/F/H assign",
     ));
     lines.push(Line::from("  x delete  c clear  [ ] cols  - = rows"));
     lines.push(Line::from("  Enter save  Esc cancel"));

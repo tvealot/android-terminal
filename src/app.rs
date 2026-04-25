@@ -36,6 +36,7 @@ pub struct App {
     pub perf: PerfState,
     pub app_control: crate::app_control::AppControlState,
     pub app_data: crate::app_data::AppDataState,
+    pub manifest: crate::manifest::ManifestState,
     pub intents: crate::intents::IntentsState,
     pub input_mode: InputMode,
     pub device: DeviceHandle,
@@ -134,6 +135,7 @@ impl App {
             perf: PerfState::new(perf_package),
             app_control: crate::app_control::AppControlState::default(),
             app_data: crate::app_data::AppDataState::default(),
+            manifest: crate::manifest::ManifestState::default(),
             intents: crate::intents::IntentsState::default(),
             input_mode: InputMode::Normal,
             device,
@@ -160,6 +162,7 @@ impl App {
         self.config.android.package = package.clone();
         self.target_package = package.clone();
         self.app_data.reset_for_package();
+        self.manifest.reset_for_package();
         match update_android_package(package.as_deref()) {
             Ok(()) => match package {
                 Some(pkg) => self.flash(format!("target package: {}", pkg), false),

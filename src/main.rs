@@ -23,6 +23,8 @@ mod keymap;
 mod layout;
 mod logcat;
 mod logcat_ui;
+mod manifest;
+mod manifest_ui;
 mod monitor;
 mod monitor_ui;
 mod network_ui;
@@ -207,6 +209,14 @@ fn run_loop(
                         }
                     }
                 }
+                Event::Manifest(report) => {
+                    app.manifest.running = false;
+                    app.manifest.scroll = 0;
+                    let error = !report.success;
+                    let text = report.summary.clone();
+                    app.manifest.last = Some(report);
+                    app.flash(text, error);
+                }
                 Event::Intent(result) => {
                     app.intents.running = false;
                     if result.success {
@@ -348,6 +358,10 @@ fn handle_key(
     }
 
     if app.focus == PanelId::AppData && handle_app_data_key(app, key, dispatcher) {
+        return;
+    }
+
+    if app.focus == PanelId::Manifest && handle_manifest_key(app, key, dispatcher) {
         return;
     }
 
@@ -1189,6 +1203,60 @@ fn open_selected_app_data(app: &mut App, dispatcher: &DispatchContext) {
             );
         }
     }
+}
+
+fn handle_manifest_key(app: &mut App, key: KeyEvent, dispatcher: &DispatchContext) -> bool {
+    match key.code {
+        KeyCode::Char('P') => {
+            app.target_package_input = app.target_package.clone().unwrap_or_default();
+            app.input_mode = InputMode::TargetPackage;
+            true
+        }
+        KeyCode::Char('r') => {
+            refresh_manifest(app, dispatcher);
+            true
+        }
+        KeyCode::Char('j') | KeyCode::Down => {
+            app.manifest.scroll_down(1);
+            true
+        }
+        KeyCode::Char('k') | KeyCode::Up => {
+            app.manifest.scroll_up(1);
+            true
+        }
+        KeyCode::PageDown | KeyCode::Char(' ') => {
+            app.manifest.scroll_down(12);
+            true
+        }
+        KeyCode::PageUp => {
+            app.manifest.scroll_up(12);
+            true
+        }
+        KeyCode::Char('G') => {
+            app.manifest.scroll = usize::MAX / 2;
+            true
+        }
+        KeyCode::Char('g') => {
+            app.manifest.scroll = 0;
+            true
+        }
+        _ => false,
+    }
+}
+
+fn refresh_manifest(app: &mut App, dispatcher: &DispatchContext) {
+    if app.manifest.running {
+        app.flash("manifest inspect already running".to_string(), false);
+        return;
+    }
+    let Some(package) = app.target_package.clone() else {
+        app.flash("set target package with P".to_string(), true);
+        return;
+    };
+    app.manifest.running = true;
+    app.manifest.scroll = 0;
+    app.manifest.last = None;
+    crate::manifest::spawn_inspect(app.device.clone(), package, dispatcher.tx.clone());
 }
 
 fn handle_intents_key(app: &mut App, key: KeyEvent, dispatcher: &DispatchContext) -> bool {

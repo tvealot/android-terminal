@@ -20,6 +20,7 @@ pub enum Event {
     Perf(crate::perf::PerfSample),
     AppControl(crate::app_control::AppActionResult),
     AppData(crate::app_data::AppDataEvent),
+    Manifest(crate::manifest::ManifestReport),
     Intent(crate::intents::IntentResult),
     Status { text: String, error: bool },
 }
