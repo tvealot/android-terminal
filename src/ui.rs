@@ -636,7 +636,7 @@ fn render_help(f: &mut Frame, area: Rect, theme: &Theme) {
             .add_modifier(Modifier::BOLD),
     )));
     lines.push(Line::from("  s / 9  focus → auto `adb shell`"));
-    lines.push(Line::from("  Ctrl+\\  defocus (cycle to next panel)"));
+    lines.push(Line::from("  Esc  defocus (cycle to next panel)"));
     lines.push(Line::from("  All keys route to the PTY while focused"));
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(

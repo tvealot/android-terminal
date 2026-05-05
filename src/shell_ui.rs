@@ -10,7 +10,7 @@ use crate::theme::Theme;
 pub fn render(f: &mut Frame, area: Rect, app: &App, theme: &Theme, focused: bool) {
     let border_color = if focused { theme.accent } else { theme.surface };
     let status = if app.shell.active {
-        " shell [adb] (Ctrl+\\ defocus)"
+        " shell [adb] (Esc defocus)"
     } else if app.shell.last_error.is_some() {
         " shell [stopped]"
     } else {

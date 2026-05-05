@@ -35,7 +35,7 @@ Inspired by [measure-sh/holo](https://github.com/measure-sh/holo), extended with
   to a named profile in `workspaces.json`.
 - **Emulator picker** (`e`) — list and launch installed AVDs.
 - **Embedded `adb shell`** (`s`/`9`) — real PTY with `vt100` rendering; keys route
-  to the shell while focused, `Ctrl+\` to defocus.
+  to the shell while focused, `Esc` to defocus.
 - **Zoom** (`z`) — fullscreen the focused panel; `Esc` to restore.
 - **Cyrillic keymap** — Russian layout chars normalized to QWERTY equivalents,
   so hotkeys work without switching layout.
@@ -228,7 +228,7 @@ PTY is the exception — its viewport repaints on resize.
 | `V` | pick build variant — overlays `assemble<Variant>` / `install<Variant>` tasks discovered via Tooling API; `a`/`i` toggles prefix, Enter writes `gradle.default_task` and updates active workspace |
 | `y` (issues) | copy full stacktrace of selected issue to clipboard |
 | `C` (issues) | clear issues list |
-| `Ctrl+\` (shell) | defocus PTY (cycle to next panel) |
+| `Esc` (shell) | defocus PTY (cycle to next panel) |
 
 ### App / Data / Manifest / Intents
 

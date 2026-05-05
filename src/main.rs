@@ -450,10 +450,12 @@ fn handle_key(app: &mut App, key: KeyEvent, dispatcher: &DispatchContext, runtim
         return;
     }
 
-    // Shell panel captures all keys while focused. Escape hatch: Ctrl+\.
+    // Shell panel captures all keys while focused. Escape exits PTY focus.
     if app.focus == PanelId::Shell && app.shell.active {
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
-        if ctrl && matches!(key.code, KeyCode::Char('\\')) {
+        if matches!(key.code, KeyCode::Esc)
+            || (ctrl && matches!(key.code, KeyCode::Char('\\')))
+        {
             app.cycle_focus(true);
             return;
         }
