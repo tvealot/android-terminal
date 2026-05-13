@@ -69,7 +69,7 @@ pub fn spawn_poller(handle: DeviceHandle, tx: Sender<Event>) {
     });
 }
 
-fn sample(handle: &DeviceHandle) -> Result<MonitorSample, String> {
+pub fn sample(handle: &DeviceHandle) -> Result<MonitorSample, String> {
     let battery_raw = adb_shell(handle, &["dumpsys", "battery"])?;
     let (level, temp) = parse_battery(&battery_raw);
     let meminfo_raw = adb_shell(handle, &["cat", "/proc/meminfo"])?;

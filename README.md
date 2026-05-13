@@ -146,6 +146,33 @@ cp sidecar/gradle-agent/build/libs/gradle-agent-0.1.0.jar \
    ~/.local/share/droidscope/gradle-agent.jar
 ```
 
+## Agentic Tool Use
+
+LLM agents should start with [AGENTS.md](AGENTS.md). It includes the repository
+map, live-device safety boundaries, and the default verification gate. The
+longer command runbook lives in [docs/agent-tool-use.md](docs/agent-tool-use.md).
+
+For routine Rust-only verification:
+
+```sh
+scripts/agent-check.sh
+```
+
+For one-shot section reads without launching the TUI:
+
+```sh
+droidscope sections
+droidscope daemons
+droidscope daemons --json
+droidscope section daemons
+droidscope devices --json
+droidscope projects --limit 20
+droidscope packages --root ~/Documents/git
+droidscope config
+```
+
+`deamons` is accepted as an alias for typo-tolerant tool use.
+
 ## Configure
 
 `~/.config/droidscope/config.toml`:

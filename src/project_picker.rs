@@ -69,12 +69,16 @@ pub fn default_root() -> PathBuf {
 
 pub fn spawn_scan(root: PathBuf, tx: Sender<Event>) {
     thread::spawn(move || {
-        let mut out = Vec::new();
-        walk(&root, 0, &mut out);
-        out.sort_by(|a, b| b.modified.cmp(&a.modified));
-        out.truncate(MAX_ENTRIES);
-        let _ = tx.send(Event::Projects(out));
+        let _ = tx.send(Event::Projects(scan(root)));
     });
+}
+
+pub fn scan(root: PathBuf) -> Vec<ProjectEntry> {
+    let mut out = Vec::new();
+    walk(&root, 0, &mut out);
+    out.sort_by(|a, b| b.modified.cmp(&a.modified));
+    out.truncate(MAX_ENTRIES);
+    out
 }
 
 fn walk(dir: &Path, depth: usize, out: &mut Vec<ProjectEntry>) {

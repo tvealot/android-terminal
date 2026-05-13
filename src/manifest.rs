@@ -111,7 +111,7 @@ pub fn spawn_inspect(handle: DeviceHandle, package: String, tx: Sender<Event>) {
     });
 }
 
-fn inspect(handle: &DeviceHandle, package: String) -> ManifestReport {
+pub fn inspect(handle: &DeviceHandle, package: String) -> ManifestReport {
     if let Err(message) = validate_package(&package) {
         return ManifestReport {
             package,

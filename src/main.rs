@@ -5,6 +5,7 @@ mod app_control_ui;
 mod app_data;
 mod app_data_ui;
 mod clipboard;
+mod cli;
 mod command_palette;
 mod config;
 mod device_actions;
@@ -89,6 +90,10 @@ impl Runtime {
 
 fn main() -> Result<()> {
     color_eyre::install()?;
+
+    if cli::handle_args()? {
+        return Ok(());
+    }
 
     let cfg = config::load_config();
     let state = config::load_state();

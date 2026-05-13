@@ -61,6 +61,7 @@ pub struct HostGradleProc {
     pub cpu: f32,
     pub rss_kb: u64,
     pub kind: &'static str,
+    pub command: String,
 }
 
 #[derive(Default)]
@@ -239,7 +240,7 @@ pub fn spawn_host_poller(tx: Sender<Event>) {
     });
 }
 
-fn scan_host_gradle() -> Vec<HostGradleProc> {
+pub fn scan_host_gradle() -> Vec<HostGradleProc> {
     let output = Command::new("ps")
         .args(["-axo", "pid=,pcpu=,rss=,command="])
         .output();
@@ -274,6 +275,7 @@ fn scan_host_gradle() -> Vec<HostGradleProc> {
             cpu,
             rss_kb,
             kind,
+            command: cmd,
         });
     }
     out

@@ -210,6 +210,19 @@ fn sample(
     })
 }
 
+pub fn sample_once(device: &DeviceHandle, pkg: &str) -> Result<PerfSample, String> {
+    let mut prev_cpu = None;
+    let mut prev_dalvik_alloc = None;
+    let mut gc_markers = 0;
+    sample(
+        device,
+        pkg,
+        &mut prev_cpu,
+        &mut prev_dalvik_alloc,
+        &mut gc_markers,
+    )
+}
+
 fn pidof(device: &DeviceHandle, pkg: &str) -> Result<u32, String> {
     let raw = shell(device, &["pidof", "-s", pkg])?;
     raw.split_whitespace()

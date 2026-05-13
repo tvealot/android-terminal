@@ -122,7 +122,7 @@ fn reset(device: &DeviceHandle, pkg: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn sample(device: &DeviceHandle, pkg: &str) -> Result<FpsSample, String> {
+pub fn sample(device: &DeviceHandle, pkg: &str) -> Result<FpsSample, String> {
     let out = adb::command(device)
         .args(["shell", "dumpsys", "gfxinfo", pkg])
         .output()

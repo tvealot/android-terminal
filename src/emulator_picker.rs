@@ -66,7 +66,7 @@ pub fn spawn_scan(tx: Sender<Event>) {
     });
 }
 
-fn list_avds() -> Result<Vec<String>, String> {
+pub fn list_avds() -> Result<Vec<String>, String> {
     let bin = emulator_binary().ok_or_else(|| "emulator binary not found (set ANDROID_SDK_ROOT)".to_string())?;
     let out = Command::new(&bin)
         .arg("-list-avds")

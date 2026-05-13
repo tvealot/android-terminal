@@ -51,7 +51,7 @@ pub fn spawn_poller(handle: DeviceHandle, tx: Sender<Event>) {
     });
 }
 
-fn sample(handle: &DeviceHandle) -> Result<Vec<ProcessInfo>, String> {
+pub fn sample(handle: &DeviceHandle) -> Result<Vec<ProcessInfo>, String> {
     // toybox ps on Android: PID USER RSS NAME
     let output = adb::command(handle)
         .args(["shell", "ps", "-A", "-o", "PID,USER,RSS,NAME"])

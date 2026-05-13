@@ -221,7 +221,7 @@ pub fn spawn_uninstall(handle: DeviceHandle, package: String, tx: Sender<Event>)
     });
 }
 
-fn scan_packages(roots: Vec<PathBuf>, seed_packages: Vec<WorkPackage>) -> Vec<WorkPackage> {
+pub fn scan_packages(roots: Vec<PathBuf>, seed_packages: Vec<WorkPackage>) -> Vec<WorkPackage> {
     let mut projects = Vec::new();
     let mut seen_projects = HashSet::new();
     for root in roots {
