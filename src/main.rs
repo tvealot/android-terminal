@@ -9,6 +9,8 @@ mod command_palette;
 mod config;
 mod device_actions;
 mod device_actions_ui;
+mod device_tools;
+mod device_tools_ui;
 mod devices_ui;
 mod dispatch;
 mod emulator_picker;
@@ -223,6 +225,23 @@ fn run_loop(
                     app.device_actions.last = Some(result);
                     app.flash(text, error);
                 }
+                Event::DeviceToolPackages(packages) => {
+                    if let Some(dialog) = app.device_tools.as_mut() {
+                        dialog.replace_packages(packages);
+                    }
+                }
+                Event::DeviceTool(result) => {
+                    if let Some(dialog) = app.device_tools.as_mut() {
+                        dialog.running = false;
+                        dialog.pending_confirm = None;
+                        let error = !result.success;
+                        let text = result.summary.clone();
+                        dialog.last = Some(result);
+                        app.flash(text, error);
+                    } else {
+                        app.flash(result.summary, !result.success);
+                    }
+                }
                 Event::AppData(event) => {
                     if app_data_event_matches_target(&app, &event) {
                         let status = app_data_status(&event);
@@ -361,6 +380,11 @@ fn handle_key(app: &mut App, key: KeyEvent, dispatcher: &DispatchContext, runtim
         return;
     }
 
+    // Device tools overlay: consumes keys while open.
+    if app.device_tools.is_some() {
+        return handle_device_tools_key(app, key, dispatcher);
+    }
+
     // Workspace picker overlay: consumes keys while open.
     if app.workspace_picker.is_some() {
         return handle_workspace_picker_key(app, key, dispatcher, runtime);
@@ -453,9 +477,7 @@ fn handle_key(app: &mut App, key: KeyEvent, dispatcher: &DispatchContext, runtim
     // Shell panel captures all keys while focused. Escape exits PTY focus.
     if app.focus == PanelId::Shell && app.shell.active {
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
-        if matches!(key.code, KeyCode::Esc)
-            || (ctrl && matches!(key.code, KeyCode::Char('\\')))
-        {
+        if matches!(key.code, KeyCode::Esc) || (ctrl && matches!(key.code, KeyCode::Char('\\'))) {
             app.cycle_focus(true);
             return;
         }
@@ -509,6 +531,9 @@ fn handle_key(app: &mut App, key: KeyEvent, dispatcher: &DispatchContext, runtim
         }
         KeyCode::Char('e') => {
             open_emulator_picker(app, dispatcher);
+        }
+        KeyCode::Char('t') => {
+            open_device_tools(app, dispatcher);
         }
         KeyCode::Char('F') => {
             app.toggle_panel(PanelId::Fps);
@@ -1563,6 +1588,286 @@ fn handle_emulator_picker_key(app: &mut App, key: KeyEvent) {
     }
 }
 
+fn open_device_tools(app: &mut App, dispatcher: &DispatchContext) {
+    let roots = device_tool_scan_roots(app);
+    let seed_packages = device_tool_seed_packages(app);
+    app.device_tools = Some(device_tools::DeviceToolsDialog::new(
+        roots.clone(),
+        seed_packages.clone(),
+    ));
+    app.flash(
+        "scanning working folders for Android packages...".to_string(),
+        false,
+    );
+    device_tools::spawn_scan(roots, seed_packages, dispatcher.tx.clone());
+}
+
+fn rescan_device_tools(app: &mut App, dispatcher: &DispatchContext) {
+    let roots = app
+        .device_tools
+        .as_ref()
+        .map(|dialog| dialog.scan_roots.clone())
+        .unwrap_or_else(|| device_tool_scan_roots(app));
+    let seed_packages = device_tool_seed_packages(app);
+    if let Some(dialog) = app.device_tools.as_mut() {
+        dialog.scan_roots = roots.clone();
+        dialog.packages = seed_packages.clone();
+        dialog.selected = 0;
+        dialog.loading = true;
+        dialog.pending_confirm = None;
+        dialog.last = None;
+    }
+    app.flash("rescanning working folders...".to_string(), false);
+    device_tools::spawn_scan(roots, seed_packages, dispatcher.tx.clone());
+}
+
+fn device_tool_scan_roots(app: &App) -> Vec<std::path::PathBuf> {
+    let mut roots = Vec::new();
+    if let Some(project) = app.config.gradle.project_dir.clone() {
+        push_unique_path(&mut roots, project);
+    }
+    for workspace in &app.workspaces.workspaces {
+        push_unique_path(&mut roots, workspace.project_dir.clone());
+    }
+    push_unique_path(&mut roots, device_tools::default_root());
+    roots
+}
+
+fn device_tool_seed_packages(app: &App) -> Vec<device_tools::WorkPackage> {
+    let mut out = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    if let (Some(package), Some(project)) = (
+        app.target_package.clone(),
+        app.config.gradle.project_dir.clone(),
+    ) {
+        if seen.insert((package.clone(), project.clone())) {
+            out.push(device_tools::WorkPackage::new(
+                package,
+                project,
+                "config target".to_string(),
+            ));
+        }
+    }
+    for workspace in &app.workspaces.workspaces {
+        let Some(package) = workspace.package.clone() else {
+            continue;
+        };
+        if seen.insert((package.clone(), workspace.project_dir.clone())) {
+            out.push(device_tools::WorkPackage::new(
+                package,
+                workspace.project_dir.clone(),
+                "workspace".to_string(),
+            ));
+        }
+    }
+    out
+}
+
+fn push_unique_path(paths: &mut Vec<std::path::PathBuf>, path: std::path::PathBuf) {
+    if !paths.iter().any(|p| p == &path) {
+        paths.push(path);
+    }
+}
+
+fn handle_device_tools_key(app: &mut App, key: KeyEvent, dispatcher: &DispatchContext) {
+    match key.code {
+        KeyCode::Esc | KeyCode::Char('q') => {
+            app.device_tools = None;
+        }
+        KeyCode::Char('j') | KeyCode::Down => {
+            if let Some(dialog) = app.device_tools.as_mut() {
+                dialog.move_down();
+                dialog.pending_confirm = None;
+            }
+        }
+        KeyCode::Char('k') | KeyCode::Up => {
+            if let Some(dialog) = app.device_tools.as_mut() {
+                dialog.move_up();
+                dialog.pending_confirm = None;
+            }
+        }
+        KeyCode::Char('R') => {
+            rescan_device_tools(app, dispatcher);
+        }
+        KeyCode::Char('s') => {
+            start_device_tool_scrcpy(app, dispatcher);
+        }
+        KeyCode::Char('r') => {
+            start_device_tool_record(app, dispatcher);
+        }
+        KeyCode::Char('w') => {
+            start_device_tool_wifi_adb(app, dispatcher);
+        }
+        KeyCode::Char('i') => {
+            start_device_tool_install_latest_apk(app, dispatcher);
+        }
+        KeyCode::Char('l') => {
+            start_device_tool_launch(app, dispatcher);
+        }
+        KeyCode::Char('f') => {
+            start_device_tool_force_stop(app, dispatcher);
+        }
+        KeyCode::Char('c') => {
+            request_device_tool_confirmation(app, device_tools::DeviceToolAction::ClearData);
+        }
+        KeyCode::Char('p') | KeyCode::Enter => {
+            let package = app
+                .device_tools
+                .as_ref()
+                .and_then(|dialog| dialog.selected_package())
+                .map(|pkg| pkg.package.clone());
+            if let Some(package) = package {
+                app.set_target_package(Some(package));
+            } else {
+                app.flash("no package selected".to_string(), true);
+            }
+        }
+        KeyCode::Char('u') => {
+            request_device_tool_confirmation(app, device_tools::DeviceToolAction::Uninstall);
+        }
+        KeyCode::Char('!') => {
+            confirm_device_tool_action(app, dispatcher);
+        }
+        _ => {}
+    }
+}
+
+fn start_device_tool_scrcpy(app: &mut App, dispatcher: &DispatchContext) {
+    if !start_device_tool_running(app) {
+        return;
+    }
+    device_tools::spawn_scrcpy(app.device.clone(), dispatcher.tx.clone());
+}
+
+fn start_device_tool_record(app: &mut App, dispatcher: &DispatchContext) {
+    if !start_device_tool_running(app) {
+        return;
+    }
+    device_tools::spawn_screenrecord(app.device.clone(), dispatcher.tx.clone());
+}
+
+fn start_device_tool_wifi_adb(app: &mut App, dispatcher: &DispatchContext) {
+    if !start_device_tool_running(app) {
+        return;
+    }
+    device_tools::spawn_wifi_adb(app.device.clone(), dispatcher.tx.clone());
+}
+
+fn start_device_tool_install_latest_apk(app: &mut App, dispatcher: &DispatchContext) {
+    let Some(package) = selected_device_tool_package(app) else {
+        app.flash("no package selected".to_string(), true);
+        return;
+    };
+    if !start_device_tool_running(app) {
+        return;
+    };
+    device_tools::spawn_install_latest_apk(app.device.clone(), package, dispatcher.tx.clone());
+}
+
+fn start_device_tool_launch(app: &mut App, dispatcher: &DispatchContext) {
+    let Some(package) = selected_device_tool_package(app).map(|p| p.package) else {
+        app.flash("no package selected".to_string(), true);
+        return;
+    };
+    if !start_device_tool_running(app) {
+        return;
+    }
+    device_tools::spawn_launch(app.device.clone(), package, dispatcher.tx.clone());
+}
+
+fn start_device_tool_force_stop(app: &mut App, dispatcher: &DispatchContext) {
+    let Some(package) = selected_device_tool_package(app).map(|p| p.package) else {
+        app.flash("no package selected".to_string(), true);
+        return;
+    };
+    if !start_device_tool_running(app) {
+        return;
+    }
+    device_tools::spawn_force_stop(app.device.clone(), package, dispatcher.tx.clone());
+}
+
+fn request_device_tool_confirmation(app: &mut App, action: device_tools::DeviceToolAction) {
+    let Some(package) = selected_device_tool_package(app).map(|p| p.package) else {
+        app.flash("no package selected".to_string(), true);
+        return;
+    };
+    if let Some(dialog) = app.device_tools.as_mut() {
+        dialog.pending_confirm = Some(device_tools::PendingDeviceTool {
+            action,
+            package: package.clone(),
+        });
+    }
+    app.flash(
+        format!("press ! to confirm {} {}", action.label(), package),
+        true,
+    );
+}
+
+fn confirm_device_tool_action(app: &mut App, dispatcher: &DispatchContext) {
+    let selected = selected_device_tool_package(app).map(|p| p.package);
+    let pending = app
+        .device_tools
+        .as_ref()
+        .and_then(|dialog| dialog.pending_confirm.clone());
+    let Some(pending) = pending else {
+        app.flash("choose c or u before confirming".to_string(), true);
+        return;
+    };
+    if selected.as_deref() != Some(pending.package.as_str()) {
+        app.flash(
+            format!("select {} again before confirming", pending.package),
+            true,
+        );
+        return;
+    }
+    if !start_device_tool_running(app) {
+        return;
+    }
+    match pending.action {
+        device_tools::DeviceToolAction::ClearData => {
+            device_tools::spawn_clear_data(
+                app.device.clone(),
+                pending.package,
+                dispatcher.tx.clone(),
+            );
+        }
+        device_tools::DeviceToolAction::Uninstall => {
+            device_tools::spawn_uninstall(
+                app.device.clone(),
+                pending.package,
+                dispatcher.tx.clone(),
+            );
+        }
+        _ => app.flash("unsupported confirmation action".to_string(), true),
+    }
+}
+
+fn selected_device_tool_package(app: &App) -> Option<device_tools::WorkPackage> {
+    app.device_tools
+        .as_ref()
+        .and_then(|dialog| dialog.selected_package().cloned())
+}
+
+fn start_device_tool_running(app: &mut App) -> bool {
+    if app
+        .device_tools
+        .as_ref()
+        .map(|dialog| dialog.running)
+        .unwrap_or(false)
+    {
+        app.flash("device tool already running".to_string(), false);
+        return false;
+    }
+    if let Some(dialog) = app.device_tools.as_mut() {
+        dialog.running = true;
+        dialog.pending_confirm = None;
+        dialog.last = None;
+        true
+    } else {
+        false
+    }
+}
+
 fn open_command_palette(app: &mut App) {
     let commands = command_palette::build_commands(app.jvm_available);
     app.command_palette = Some(command_palette::CommandPalette::new(commands));
@@ -1626,6 +1931,7 @@ fn execute_palette_command(
         RunGradle => start_gradle(app, dispatcher),
         PickVariant => open_variant_picker(app, dispatcher),
         PickDevice => open_device_selector(app),
+        OpenDeviceTools => open_device_tools(app, dispatcher),
         LaunchEmulator => open_emulator_picker(app, dispatcher),
         CycleFocusNext => app.cycle_focus(true),
         CycleFocusPrev => app.cycle_focus(false),

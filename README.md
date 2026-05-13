@@ -21,6 +21,10 @@ Inspired by [measure-sh/holo](https://github.com/measure-sh/holo), extended with
 - **Device Actions panel** — screenshot, screenrecord, rotation, dark mode,
   locale, font scale, battery simulation, airplane/Wi-Fi/data toggles, text
   input, and tap.
+- **Device Tools dialog** (`t`) — launch `scrcpy`, record a 30-second MP4,
+  connect Wi-Fi ADB, scan working code folders for Android package ids, install
+  the latest Gradle APK, set the shared target package from a scanned project,
+  launch/force-stop/clear data, and uninstall with confirmation.
 - **Perf panel** — periodic `dumpsys meminfo` + `dumpsys gfxinfo` + `/proc/<pid>/stat`
   sampler for the shared target package: PSS/RSS, App Summary breakdown, CPU%,
   jank %, frame p50/p90/p95/p99, GC marker count, with sparkline history.
@@ -193,6 +197,7 @@ PTY is the exception — its viewport repaints on resize.
 | `z`          | zoom focused panel (`Esc` restores)               |
 | `Alt+m`      | toggle mouse mode for wheel scrolling and row clicks; off restores terminal text selection |
 | `d`          | open device selector overlay                      |
+| `t`          | open device tools dialog (`scrcpy`, recording, Wi-Fi ADB, install APK, scanned packages, uninstall) |
 | `w`          | open project picker overlay                       |
 | `W`          | open saved workspace overlay                      |
 | `S`          | save current project as a workspace               |
@@ -267,6 +272,24 @@ Actions include screenshot (`droidscope-screenshot-*.png`), 10-second
 screenrecord (`droidscope-screenrecord-*.mp4`), rotate right, dark mode
 on/off, locale, font scale, battery unplug/reset, airplane mode, Wi-Fi,
 mobile data, `input text`, and `input tap x y`.
+
+### Device Tools Dialog
+
+| Key | Action |
+| --- | ------ |
+| `t` | open the device tools dialog |
+| `s` | launch `scrcpy` for the selected adb device |
+| `r` | record a 30-second MP4 from the device screen |
+| `w` | switch selected USB device to TCP/IP mode and run `adb connect <device-ip>:5555` |
+| `i` | install the newest APK found under the selected package's project `build/outputs/apk` folders |
+| `l` | launch the selected package |
+| `f` | force-stop the selected package |
+| `j`/`k` or `↓`/`↑` | navigate packages discovered from saved workspaces, the current project, and Android projects under `~/Documents` |
+| `p` / `Enter` | set the selected package as the shared target package |
+| `c`, then `!` | clear app data for the selected package |
+| `u`, then `!` | uninstall the selected package via `adb uninstall` |
+| `R` | rescan working folders for packages |
+| `Esc` | close the dialog |
 
 ### Perf / FPS
 

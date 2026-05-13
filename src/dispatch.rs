@@ -20,6 +20,8 @@ pub enum Event {
     Perf(crate::perf::PerfSample),
     AppControl(crate::app_control::AppActionResult),
     DeviceAction(crate::device_actions::DeviceActionResult),
+    DeviceToolPackages(Vec<crate::device_tools::WorkPackage>),
+    DeviceTool(crate::device_tools::DeviceToolResult),
     AppData(crate::app_data::AppDataEvent),
     Manifest(crate::manifest::ManifestReport),
     Intent(crate::intents::IntentResult),

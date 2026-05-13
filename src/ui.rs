@@ -9,9 +9,9 @@ use crate::layout::{cell_rect, LayoutEditor, LayoutGrid};
 use crate::panel::{def, PanelId, PANELS};
 use crate::theme::Theme;
 use crate::{
-    app_control_ui, app_data_ui, device_actions_ui, devices_ui, files_ui, fps_ui, gradle_ui,
-    intents_ui, issues_ui, logcat_ui, manifest_ui, monitor_ui, network_ui, perf_ui, processes_ui,
-    shell_ui,
+    app_control_ui, app_data_ui, device_actions_ui, device_tools_ui, devices_ui, files_ui, fps_ui,
+    gradle_ui, intents_ui, issues_ui, logcat_ui, manifest_ui, monitor_ui, network_ui, perf_ui,
+    processes_ui, shell_ui,
 };
 
 pub fn render(f: &mut Frame, app: &App, theme: &Theme) {
@@ -39,6 +39,10 @@ pub fn render(f: &mut Frame, app: &App, theme: &Theme) {
 
     if app.show_help {
         render_help(f, area, theme);
+    }
+
+    if app.device_tools.is_some() {
+        device_tools_ui::render(f, area, app, theme);
     }
 
     if let Some(idx) = app.device_selector {
@@ -96,9 +100,7 @@ fn render_header(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     if app.mouse_enabled {
         spans.push(Span::styled(
             "[mouse] ",
-            Style::default()
-                .fg(theme.warn)
-                .add_modifier(Modifier::BOLD),
+            Style::default().fg(theme.warn).add_modifier(Modifier::BOLD),
         ));
     }
     if let Some(active) = app.workspaces.active.as_ref().and_then(|id| {
@@ -455,7 +457,9 @@ fn render_footer(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         Line::from(vec![
             Span::styled(
                 "Ctrl+P: cmd palette  ",
-                Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(theme.accent)
+                    .add_modifier(Modifier::BOLD),
             ),
             Span::styled("Alt+m: mouse  ", Style::default().fg(theme.muted)),
             Span::styled("panel keys toggle  ", Style::default().fg(theme.muted)),
@@ -463,6 +467,7 @@ fn render_footer(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
             Span::styled("0 layout  ", Style::default().fg(theme.muted)),
             Span::styled("Tab: cycle  ", Style::default().fg(theme.muted)),
             Span::styled("d: device  ", Style::default().fg(theme.muted)),
+            Span::styled("t: tools  ", Style::default().fg(theme.muted)),
             Span::styled("w: project  ", Style::default().fg(theme.muted)),
             Span::styled("W: workspaces  ", Style::default().fg(theme.muted)),
             Span::styled("S: save workspace  ", Style::default().fg(theme.muted)),
@@ -668,10 +673,19 @@ fn render_help(f: &mut Frame, area: Rect, theme: &Theme) {
             .add_modifier(Modifier::BOLD),
     )));
     lines.push(Line::from("  d  open device selector"));
+    lines.push(Line::from(
+        "  t  open device tools dialog (scrcpy, record, scanned packages)",
+    ));
     lines.push(Line::from("  8 / v  devices panel (j/k + Enter to switch)"));
     lines.push(Line::from("  D / o  device actions panel"));
     lines.push(Line::from(
         "  Enter  run action; input actions prompt in the footer",
+    ));
+    lines.push(Line::from(
+        "  In tools: s scrcpy, r record, w Wi-Fi ADB, i install APK",
+    ));
+    lines.push(Line::from(
+        "  In tools: l launch, f force-stop, p target, c/u then ! clear/uninstall",
     ));
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
@@ -712,7 +726,9 @@ fn render_help(f: &mut Frame, area: Rect, theme: &Theme) {
             .fg(theme.accent)
             .add_modifier(Modifier::BOLD),
     )));
-    lines.push(Line::from("  Ctrl+P  open command palette (fuzzy search all actions)"));
+    lines.push(Line::from(
+        "  Ctrl+P  open command palette (fuzzy search all actions)",
+    ));
     lines.push(Line::from(""));
     lines.push(Line::from("  ?  toggle this help"));
     lines.push(Line::from(
@@ -975,9 +991,7 @@ fn render_variant_picker(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         Span::styled("  task prefix: ", Style::default().fg(theme.muted)),
         Span::styled(
             picker.mode.prefix(),
-            Style::default()
-                .fg(theme.warn)
-                .add_modifier(Modifier::BOLD),
+            Style::default().fg(theme.warn).add_modifier(Modifier::BOLD),
         ),
         Span::styled(
             "   (a=assemble  i=install  Tab toggle)",
@@ -1194,7 +1208,9 @@ fn render_command_palette(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     let prompt = Line::from(vec![
         Span::styled(
             "> ",
-            Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(theme.accent)
+                .add_modifier(Modifier::BOLD),
         ),
         Span::styled(palette.query.clone(), Style::default().fg(theme.fg)),
         Span::styled("▌", Style::default().fg(theme.accent)),

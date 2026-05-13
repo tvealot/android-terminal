@@ -9,10 +9,10 @@ use crate::config::{
     workspace_id, workspace_name, Config, ScreenState, State, WorkspaceLogcat, WorkspaceProfile,
     WorkspaceStore, SCREEN_COUNT,
 };
-use crate::gradle::variant_to_task;
 use crate::emulator_picker::EmulatorPicker;
 use crate::files::FilesState;
 use crate::fps::{self, FpsState};
+use crate::gradle::variant_to_task;
 use crate::layout::{LayoutEditor, LayoutGrid};
 use crate::panel::{def, Feature, PanelId, PANELS};
 use crate::perf::{self, PerfState};
@@ -40,6 +40,7 @@ pub struct App {
     pub perf: PerfState,
     pub app_control: crate::app_control::AppControlState,
     pub device_actions: crate::device_actions::DeviceActionsState,
+    pub device_tools: Option<crate::device_tools::DeviceToolsDialog>,
     pub app_data: crate::app_data::AppDataState,
     pub manifest: crate::manifest::ManifestState,
     pub intents: crate::intents::IntentsState,
@@ -209,6 +210,7 @@ impl App {
             perf: PerfState::new(perf_package),
             app_control: crate::app_control::AppControlState::default(),
             device_actions: crate::device_actions::DeviceActionsState::default(),
+            device_tools: None,
             app_data: crate::app_data::AppDataState::default(),
             manifest: crate::manifest::ManifestState::default(),
             intents: crate::intents::IntentsState::default(),
@@ -417,10 +419,7 @@ impl App {
     pub fn toggle_panel(&mut self, id: PanelId) {
         let d = def(id);
         if d.requires == Feature::Jvm && !self.jvm_available {
-            self.flash(
-                "install JDK 17+ to enable Gradle panel".to_string(),
-                true,
-            );
+            self.flash("install JDK 17+ to enable Gradle panel".to_string(), true);
             return;
         }
         if self.visible.contains(&id) {
@@ -444,7 +443,11 @@ impl App {
             self.persist();
         } else {
             self.flash(
-                format!("panel '{}' is hidden ({} to show)", def(id).name, def(id).toggle_key),
+                format!(
+                    "panel '{}' is hidden ({} to show)",
+                    def(id).name,
+                    def(id).toggle_key
+                ),
                 false,
             );
         }
